@@ -1,0 +1,21 @@
+Support Team Weekly — Ticket Volume Review
+Date: Q3 Week 3
+Lead: Ashok Patel
+Attendees: Smitha Rao, Jaya Krishnan
+
+Ticket volume this week: 234 (up 40% from last week)
+Average resolution time: 3.2 days (SLA target: 1 day)
+
+Ashok flagged that the spike is almost entirely related to the LMS login issue that began after Tuesday's deployment. Learners cannot access the platform on mobile browsers. The issue was reported on day 1 but the Platform team marked it as low priority.
+
+Smitha noted that 12 complaints have come in from the same cohort — a government skills programme. If these learners miss their session deadline, there is a compliance risk for the client contract.
+
+Jaya raised that the support team has been working overtime for 10 consecutive days. She is concerned about team burnout. Two part-time support agents have requested reduced hours next month.
+
+Escalation: Ashok escalated the mobile login issue to Priya Nair (Platform Lead) and copied Kavitha Reddy (PM). As of this report, no fix timeline has been communicated.
+
+Action items:
+- Ashok to escalate mobile login issue to Director if no response by EOD
+- Smitha to contact cohort coordinator to manage learner expectations
+- Jaya to document overtime hours for HR review
+- Ashok to request Platform team provide fix ETA within 24 hours

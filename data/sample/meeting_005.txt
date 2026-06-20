@@ -1,0 +1,25 @@
+Weekly Status Report — Programme Q3 Delivery Review
+Submitted by: Kavitha Reddy, Programme Manager
+Period: Week 3, Q3
+
+OVERALL STATUS: AMBER
+
+Key milestones at risk:
+- Student Portal v2 launch: slipped 2 weeks due to Auth service dependency
+- Assessment Engine integration: blocked pending API contract from vendor
+- Mobile app beta: on track
+
+Team health summary:
+The Platform team is showing signs of burnout. Three engineers have flagged capacity issues in retrospectives over the past two sprints. One senior developer, Rohan Verma, has requested a transfer to another team citing unclear priorities and management support gaps. His request is under review but losing him would create a significant bus factor risk on the authentication module.
+
+Dependency escalations:
+- Student Records API: escalated to vendor account manager two weeks ago, no response
+- Payment Gateway integration: awaiting legal approval on data processing agreement
+- Auth service: internal blocker, ownership unclear after team restructure
+
+Risks added this week:
+1. Team attrition risk (HIGH) — Rohan Verma potential departure
+2. Vendor dependency risk (HIGH) — Student Records API unresolved for 4 weeks
+3. Delivery risk (MEDIUM) — Sprint 14 carry-forward at 40% of planned velocity
+
+Next steps: Director review scheduled for Thursday. Escalation required on vendor dependencies before end of month.

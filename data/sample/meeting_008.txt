@@ -1,0 +1,20 @@
+Q3 Director Review — Programme Status
+Date: Q3 Week 3
+Chair: Dr. Sunita Rajan, Delivery Director
+Attendees: Kavitha Reddy (PM), Priya Nair (Platform Lead), Suresh Menon (Data Lead), Nandini Krishnan (Mobile Lead)
+
+Dr. Rajan opened by noting that Q3 is at amber status for the third consecutive week. She asked each team lead to give a one-minute honest assessment.
+
+Priya (Platform): Auth service migration is 60% complete but blocked on vendor API. Risk of missing Q3 milestone is HIGH. Team is stretched. One resignation risk flagged.
+
+Suresh (Data): Student Records API is 5 weeks overdue from vendor. This is critical path for the learner dashboard. If not resolved by end of Q3 Week 4, the launch date slips by a full sprint. Team morale is a concern — one engineer is actively looking elsewhere.
+
+Nandini (Mobile): Mobile beta is on track but the offline sync feature is blocked waiting on Platform endpoints. If those slip another week, mobile will miss beta freeze.
+
+Dr. Rajan's decisions:
+1. Student Records API: she will personally call the vendor account director today. This cannot wait.
+2. Auth service: Platform team to identify a workaround path that removes the vendor dependency for the Q3 launch scope.
+3. Attrition risks: HR to be looped in this week for both flagged engineers.
+4. Velocity concerns: no scope additions approved for Q3. All new requests go to Q4 backlog.
+
+Dr. Rajan closed: "If we miss Q3, it affects our partnership renewal with the Ministry. This is not a technical problem anymore — it is a relationship risk."

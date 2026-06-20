@@ -1,0 +1,13 @@
+Sprint 14 Review — Data Engineering Team
+Date: 2026-06-11
+Attendees: Sunita (Lead), Dev (Senior Engineer), Fatima (Analyst)
+
+Sunita opened the review noting that the ETL pipeline for the learner data warehouse has been delayed by two weeks. The delay is caused by incomplete API documentation from the Student Records team. Dev has been blocked on this for eight working days and has had to context-switch to lower-priority tasks.
+
+Fatima raised that three dashboard reports are now showing stale data because the pipeline has not run successfully since June 3rd. This is affecting programme coordinators who rely on daily metrics.
+
+The team discussed escalation options. Sunita will raise a formal dependency flag with the programme manager today. Dev suggested that if the Student Records API is not unblocked by end of next week, the team will need to build a temporary workaround using CSV exports, which will add an additional week of effort.
+
+Team capacity is under pressure. Dev is the only engineer who understands the full pipeline architecture. Fatima is splitting time between this project and another programme, reducing her effective capacity to 60%.
+
+Risk: single point of failure on Dev. Bus factor is 1 for this critical component.

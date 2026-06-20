@@ -1,0 +1,23 @@
+Data Engineering — Sprint 14 Retrospective
+Date: Q3 Week 2
+Facilitator: Suresh Menon
+Attendees: Divya Nair, Aman Gupta, Preeti Jain, Harish Kumar
+
+Team velocity: 28 points delivered vs 45 committed. Third sprint in a row below 65% velocity.
+
+Root cause discussion:
+Divya: The ETL pipeline refactor is taking longer than scoped because the legacy data format is poorly documented. We are discovering new edge cases every week.
+
+Aman: The Student Records API delay is now 5 weeks. We cannot complete the data sync module without it. I have raised this twice in programme standups but nothing has moved.
+
+Preeti: We lost two days to an unplanned incident — the nightly batch job failed silently for 48 hours before anyone noticed. We had no alerting on the job outcome. Data for 3 cohorts was stale.
+
+Harish: I am concerned about Divya's workload. She is the only person who understands the legacy ETL system. If she is sick or leaves, we are in serious trouble.
+
+Team health: The team is frustrated by repeated blockers outside their control. Aman mentioned he has started looking at external opportunities because he does not feel the team is set up to succeed. This should be treated as an attrition risk.
+
+Actions:
+- Suresh to escalate Student Records API to Director — 5 weeks unresolved
+- Preeti to implement alerting on all nightly batch jobs by Sprint 15 day 3
+- Harish to start documenting ETL system with Divya — bus factor reduction
+- Suresh to raise Aman's concern with Delivery Director in 1:1 this week

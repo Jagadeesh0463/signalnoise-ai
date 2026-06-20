@@ -1,0 +1,18 @@
+Incident Review — LMS Platform Outage
+Date: Q3 Week 2
+Incident Owner: Vikram Nair
+Attendees: Meena Pillai, Arjun Desai, Suresh Babu
+
+Summary of incident: LMS platform experienced a full outage for 4 hours on Tuesday. 1,200 learners were affected during a live cohort session. Root cause was an unannounced database schema migration pushed to production without a rollback plan.
+
+Vikram confirmed the change was pushed by a contractor who bypassed the change management process. Meena noted this is the third deployment incident in six weeks. Arjun raised concern that the team lacks a proper staging environment — all testing is done directly in production.
+
+Suresh escalated that monitoring alerts were suppressed during a maintenance window and were never re-enabled. The outage went undetected for 47 minutes. SRE escalation was only triggered when learners began reporting issues on the support channel.
+
+Risk assessment: High risk of repeat incident. No staging environment. Monitoring gap unresolved. Change management process not enforced for contractors.
+
+Immediate actions:
+- Vikram to implement contractor access controls by end of week
+- Meena to restore monitoring alerts before next cohort session
+- Arjun to draft staging environment proposal for director approval
+- Suresh to document rollback procedure in runbook

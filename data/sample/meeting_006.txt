@@ -1,0 +1,24 @@
+Sprint 14 Retrospective — Mobile App Team
+Date: Q3 Week 2
+Facilitator: Nandini Krishnan
+Attendees: Rahul Joshi, Pooja Iyer, Kiran Bhat, Tanvi Shah
+
+What went well:
+- Beta build shipped on time
+- Good collaboration with QA team
+- Code review process improving
+
+What did not go well:
+Rahul flagged that the backend API team is not meeting the agreed SLA for new endpoint delivery. Three endpoints required for the offline sync feature are overdue by 10 days. The mobile team is blocked and cannot complete the offline feature without these.
+
+Pooja raised that requirements for the assessment module changed mid-sprint for the second time in a row. This caused two days of rework and contributed to the team missing their velocity target.
+
+Kiran noted he has been the only person working on the push notification service for three sprints now. If he is unavailable, no one else on the team can support it. He has requested a knowledge transfer session but it has not been prioritised.
+
+Tanvi flagged morale is low. The team feels they are always waiting on other teams to unblock them. There is frustration about the lack of clarity on programme priorities.
+
+Actions:
+- Nandini to raise API SLA breach with Platform team lead
+- Pooja to escalate mid-sprint scope changes to programme manager
+- Kiran to schedule knowledge transfer session — Nandini to block time in Sprint 15
+- Nandini to raise team morale issue with Delivery Director

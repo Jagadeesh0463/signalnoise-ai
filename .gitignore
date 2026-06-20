@@ -1,0 +1,43 @@
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ── Data (never commit raw or processed documents) ────────────────────────────
+data/raw/
+data/processed/
+
+# ── ChromaDB (vector store lives locally) ─────────────────────────────────────
+chroma/
+*.chroma
+
+# ── SQLite database ───────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Streamlit ────────────────────────────────────────────────────────────────
+# Commit config.toml (server settings) but never secrets
+.streamlit/secrets.toml
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/

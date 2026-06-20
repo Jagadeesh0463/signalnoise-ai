@@ -1,0 +1,14 @@
+Sprint 14 Retrospective — Platform Team
+Date: 2026-06-10
+Attendees: Priya (Tech Lead), Ravi (Backend), Meena (QA), Arjun (DevOps)
+
+Priya opened by noting this is the third sprint in a row where we have not hit our velocity target. The team is visibly tired. Ravi mentioned he has been working weekends for the past month to keep up with the integration deadlines. Meena raised concerns that QA is being squeezed at the end of every sprint and bugs are slipping to production.
+
+Arjun flagged that the deployment pipeline has broken twice this sprint due to dependency conflicts with the Auth service team. We are still waiting on the Auth team to resolve their API versioning issue. This has been a blocker for three weeks now.
+
+Action items:
+- Priya to escalate Auth dependency blocker to programme manager by Friday
+- Ravi to document overtime hours for capacity planning
+- Team agreed that if this pattern continues, two members may consider leaving the programme
+
+Overall mood: low. Team needs support.

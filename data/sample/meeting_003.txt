@@ -1,0 +1,18 @@
+Sprint 15 Planning — Platform Team
+Date: Week 3, Q3
+Facilitator: Priya Nair
+Attendees: Ravi Kumar, Anjali Mehta, Siddharth Rao, Deepika Sharma
+
+Priya opened the session by reviewing the backlog. Ravi flagged that the Auth service migration is still incomplete and will now block three stories in Sprint 15. Anjali raised concern that the team is carrying forward four unfinished items from Sprint 14 — this is becoming a pattern.
+
+Siddharth noted that the Student Records API dependency has not been resolved. The vendor has not responded to escalation emails sent two weeks ago. Deepika suggested escalating to programme management today rather than waiting another sprint.
+
+Capacity concerns: Anjali flagged she is at 110% allocation across two workstreams. Ravi mentioned he has been picking up work outside his team due to understaffing in the Data Engineering squad. Priya acknowledged the issue but noted there is no current plan to rebalance.
+
+Sprint 15 commitments are at risk from day one. The team agreed to flag this as a programme-level blocker in the weekly status report.
+
+Action items:
+- Priya to escalate Auth dependency to Director by Friday
+- Ravi to reduce cross-team commitments to 20% of sprint capacity
+- Anjali to document capacity gap in the risk register
+- Siddharth to follow up with vendor on Student Records API — escalation path needed

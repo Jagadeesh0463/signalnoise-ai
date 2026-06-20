@@ -1,0 +1,21 @@
+Assessment Engine Team — Sprint 14 Review
+Date: Q3 Week 2
+Lead: Ritu Sharma
+Attendees: Nikhil Verma, Bhavna Gupta, Sameer Joshi
+
+Sprint outcome: 6 of 11 stories completed. Velocity: 54%.
+
+Nikhil: The assessment engine integration test environment has been down for 6 days. We raised a ticket to DevOps — still unresolved. All integration testing is blocked.
+
+Bhavna: The API contract from the external assessment vendor has not arrived. Legal is reviewing the data processing agreement. We were told it would be done in Sprint 13. It has now pushed to Sprint 15 at the earliest. This is a hard dependency for 40% of our sprint scope.
+
+Sameer: I flagged in the last two retrospectives that our automated test coverage is below 30%. We keep shipping stories without tests because of time pressure. This is building technical debt that will slow us down badly in Q4.
+
+Ritu's assessment: The team is at risk of missing the Q3 integration milestone. Two separate blockers — DevOps environment and legal approval — are both unresolved and both outside the team's control. The team is demoralised from carrying forward stories for three consecutive sprints.
+
+Risk escalation needed:
+- Integration environment outage: 6 days unresolved
+- Vendor API contract: delayed, legal review ongoing with no end date
+- Technical debt accumulation: test coverage declining sprint over sprint
+
+Ritu to raise all three in Thursday's Director review.
