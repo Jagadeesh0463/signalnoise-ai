@@ -5,8 +5,7 @@
 # Forces CPU-only PyTorch (~200MB) instead of CUDA version (~1.5GB).
 # Critical for Streamlit Cloud free tier — prevents build timeout.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.3.1+cpu
-torchvision==0.18.1+cpu
+torch==2.12.1+cpu
 
 # ── Core NLP / Signal Detection ──────────────────────────────────────────────
 bertopic>=0.16.4
