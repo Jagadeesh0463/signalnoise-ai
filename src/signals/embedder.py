@@ -20,6 +20,7 @@ Usage:
 """
 
 import logging
+import shutil
 from pathlib import Path
 
 import chromadb
@@ -55,19 +56,54 @@ def _get_collection():
     """Get or create ChromaDB persistent collection."""
     global _chroma_client, _collection
     if _collection is None:
-        db_path = str(config.CHROMA_DB_PATH)
+        chroma_path = Path(config.CHROMA_DB_PATH)
+        # Always ensure the directory exists — ChromaDB does NOT create it reliably
+        chroma_path.mkdir(parents=True, exist_ok=True)
+        db_path = str(chroma_path)
         logger.info("Connecting to ChromaDB at: %s", db_path)
-        _chroma_client = chromadb.PersistentClient(path=db_path)
-        _collection = _chroma_client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},   # cosine similarity for text
-        )
+
+        try:
+            _chroma_client = chromadb.PersistentClient(path=db_path)
+            _collection = _chroma_client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"},
+            )
+        except Exception as exc:
+            # Corrupted or locked chroma database — wipe and start fresh
+            logger.warning(
+                "ChromaDB open failed (%s) — wiping and recreating at %s", exc, db_path
+            )
+            shutil.rmtree(db_path, ignore_errors=True)
+            chroma_path.mkdir(parents=True, exist_ok=True)
+            _chroma_client = chromadb.PersistentClient(path=db_path)
+            _collection = _chroma_client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"},
+            )
+
         logger.info(
             "ChromaDB collection '%s' ready — %d documents stored.",
             COLLECTION_NAME,
             _collection.count(),
         )
     return _collection
+
+
+def reset_collection() -> None:
+    """
+    Wipe ChromaDB and reset module-level globals.
+    Called by the Reset Data button in the Streamlit UI so the in-process
+    client doesn't remain pointing at a deleted directory.
+    """
+    global _chroma_client, _collection
+    _collection = None
+    _chroma_client = None
+    chroma_path = Path(config.CHROMA_DB_PATH)
+    if chroma_path.exists():
+        shutil.rmtree(chroma_path, ignore_errors=True)
+        logger.info("ChromaDB wiped at: %s", chroma_path)
+    # Recreate empty directory so next call works immediately
+    chroma_path.mkdir(parents=True, exist_ok=True)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

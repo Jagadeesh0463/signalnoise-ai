@@ -116,16 +116,17 @@ with st.sidebar:
 
     # Quick reset option
     if st.button("🗑️ Reset Data", help="Clear ChromaDB and SQLite — use before a fresh demo run"):
-        import shutil
-        chroma_path = config.CHROMA_DB_PATH
+        from src.signals.embedder import reset_collection
+        # Reset ChromaDB (wipes directory + module-level globals)
+        reset_collection()
+        # Reset SQLite
         db_path = config.SQLITE_DB_PATH
-        if chroma_path.exists():
-            shutil.rmtree(chroma_path)
         if db_path.exists():
             db_path.unlink()
         st.session_state.anon_docs = []
         st.session_state.store = MemoryStore()
         st.session_state.pipeline_ran = False
+        st.session_state.pop("confidence_map", None)
         st.success("✅ Data reset complete.")
         st.rerun()
 

@@ -122,12 +122,13 @@ def _load_config() -> Config:
         GROQ_API_KEY=_require("GROQ_API_KEY"),
         GROQ_MODEL=_optional("GROQ_MODEL", "llama3-8b-8192"),
 
-        # Data paths — resolved relative to project root
-        RAW_DATA_DIR=Path(_optional("RAW_DATA_DIR", "data/raw")),
-        PROCESSED_DATA_DIR=Path(_optional("PROCESSED_DATA_DIR", "data/processed")),
-        SAMPLE_DATA_DIR=Path(_optional("SAMPLE_DATA_DIR", "data/sample")),
-        CHROMA_DB_PATH=Path(_optional("CHROMA_DB_PATH", "data/processed/chroma")),
-        SQLITE_DB_PATH=Path(_optional("SQLITE_DB_PATH", "data/processed/signalnoise.db")),
+        # Data paths — use /tmp on read-only cloud filesystems (Streamlit Cloud),
+        # or local data/ when running on a developer machine.
+        RAW_DATA_DIR=Path(_optional("RAW_DATA_DIR", "/tmp/signalnoise/raw")),
+        PROCESSED_DATA_DIR=Path(_optional("PROCESSED_DATA_DIR", "/tmp/signalnoise/processed")),
+        SAMPLE_DATA_DIR=Path(_optional("SAMPLE_DATA_DIR", "/tmp/signalnoise/sample")),
+        CHROMA_DB_PATH=Path(_optional("CHROMA_DB_PATH", "/tmp/signalnoise/chroma")),
+        SQLITE_DB_PATH=Path(_optional("SQLITE_DB_PATH", "/tmp/signalnoise/signalnoise.db")),
 
         # Quality gate
         MIN_WORD_COUNT=_optional_int("MIN_WORD_COUNT", 50),
