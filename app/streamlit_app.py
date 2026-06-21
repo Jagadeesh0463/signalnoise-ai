@@ -169,13 +169,62 @@ _CATEGORY_INDICATORS: dict[str, list[str]] = {
 }
 
 _CATEGORY_QUICK_ACTIONS: dict[str, list[str]] = {
-    "team_health":    ["Reduce workload", "Schedule 1:1 check-ins", "Rebalance capacity"],
-    "delivery_risk":  ["Review sprint commitments", "Escalate to Director", "Identify recovery plan"],
-    "attrition":      ["HR retention conversations", "1:1 with at-risk engineers", "Review workload"],
-    "bus_factor":     ["Start knowledge transfer", "Documentation sprint", "Pair programming sessions"],
-    "dependency":     ["Escalate to vendor directly", "Identify workaround path", "Programme review"],
-    "technical_debt": ["Increase test coverage", "QA capacity review", "Debt reduction sprint"],
-    "operational":    ["SRE incident review", "Fix monitoring gaps", "Staging environment required"],
+    "team_health":    ["Reduce workload / Resource rebalancing",
+                       "Director-level 1:1 with team leads",
+                       "Timeline relief assessment"],
+    "delivery_risk":  ["Emergency programme review",
+                       "Recovery plan with new milestone dates",
+                       "Escalate to Director today"],
+    "attrition":      ["HR retention conversations this week",
+                       "1:1 with at-risk engineers",
+                       "Root cause: workload vs. growth vs. comp"],
+    "bus_factor":     ["Knowledge transfer sessions this sprint",
+                       "Pair on undocumented systems",
+                       "Runbook documentation drive"],
+    "dependency":     ["Escalate directly to vendor contact",
+                       "Identify workaround / unblock path",
+                       "Programme-level dependency review"],
+    "technical_debt": ["Dedicated debt-reduction sprint",
+                       "Set minimum test coverage threshold",
+                       "QA capacity and staging review"],
+    "operational":    ["SRE incident review and runbook update",
+                       "Fix monitoring and alerting gaps",
+                       "Staging environment mandate"],
+}
+
+_CATEGORY_BUSINESS_IMPACT: dict[str, list[str]] = {
+    "team_health":    ["Increased attrition risk", "Delivery slowdown",
+                       "Quality degradation from fatigue", "Escalating people cost"],
+    "delivery_risk":  ["Sprint delay", "Release date slip", "Customer commitment at risk",
+                       "Revenue impact if milestone missed"],
+    "attrition":      ["Loss of institutional knowledge", "Recruiting and onboarding cost",
+                       "Delivery gap during transition", "Team morale impact"],
+    "bus_factor":     ["Programme halted if key person is unavailable",
+                       "Critical systems become unmaintainable",
+                       "Single-point-of-failure for incident response"],
+    "dependency":     ["Blocked delivery pipeline", "Release date at risk",
+                       "Cross-team credibility impact", "SLA breach if unresolved"],
+    "technical_debt": ["Bugs escaping to production", "QA bottleneck on every release",
+                       "Increasing rework cost", "Customer-facing quality degradation"],
+    "operational":    ["Undetected production failures", "SLA breach",
+                       "Customer trust impact", "On-call burnout"],
+}
+
+# Which categories cause / are caused by others — drives risk relationship view
+_RISK_CAUSES: dict[str, list[str]] = {
+    "delivery_risk":  ["dependency", "team_health", "technical_debt"],
+    "team_health":    ["attrition"],
+    "attrition":      ["team_health"],
+    "bus_factor":     ["attrition"],
+    "dependency":     [],
+    "technical_debt": [],
+    "operational":    ["technical_debt", "bus_factor"],
+}
+
+_TREND_LABELS: dict[str, str] = {
+    "emerging": "📈 Increasing",
+    "stable":   "➡️ Stable",
+    "fading":   "📉 Improving",
 }
 
 
@@ -184,7 +233,29 @@ def _get_matched_indicators(category: str, evidence: list[dict]) -> list[str]:
     indicators = _CATEGORY_INDICATORS.get(category, [])
     all_text = " ".join(ev.get("snippet", "").lower() for ev in evidence)
     found = [ind for ind in indicators if ind.lower() in all_text]
-    return found[:6]  # show at most 6
+    return found[:6]
+
+
+def _filter_evidence(evidence: list[dict]) -> list[dict]:
+    """Remove low-value snippets: too short, mostly role codes, or near-duplicates."""
+    seen: set[str] = set()
+    filtered: list[dict] = []
+    for ev in evidence:
+        snippet = ev.get("snippet", "").strip()
+        if len(snippet) < 30:
+            continue
+        # Skip snippets that are >40% anonymization codes [X]
+        code_chars = sum(len(w) for w in snippet.split() if w.startswith("[") and w.endswith("]"))
+        if code_chars / max(len(snippet), 1) > 0.4:
+            continue
+        # Deduplicate by first 50 chars
+        key = snippet[:50].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered.append(ev)
+    # Return top 5 by relevance (already sorted by store)
+    return filtered[:5]
 
 
 def _confidence_display(sig: dict) -> str:
@@ -195,23 +266,48 @@ def _confidence_display(sig: dict) -> str:
     return {"high": "85%", "medium": "70%", "low": "55%"}.get(band, "55%")
 
 
-def _render_signal_card(sig: dict, store: MemoryStore, total_docs: int = 10) -> None:
-    """Render a full enterprise signal card with evidence, narration, and feedback."""
-    severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
-    trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
-    confidence_pct = _confidence_display(sig)
+def _smart_urgency(sig: dict, doc_count: int, total_docs: int, evidence_count: int) -> str:
+    """Return an evidence-driven urgency label."""
+    score = sig.get("confidence_score") or 70
+    coverage = doc_count / total_docs if total_docs > 0 else 0
+    if sig["severity"] == "STRONG" and score >= 90 and coverage >= 0.6:
+        return "🚨 **Immediate executive escalation**"
+    if sig["severity"] == "STRONG" and score >= 80:
+        return "⚠️ **Action required this week**"
+    if sig["severity"] == "STRONG":
+        return "📋 **Schedule review in next 2 weeks**"
+    if evidence_count >= 3:
+        return "📋 **Monitor — escalate if worsens**"
+    return "📝 **Continue monitoring — reassess next sprint**"
 
-    # Fetch evidence upfront so we can use it in the header
-    evidence = store.get_evidence_for_signal(sig["id"])
-    doc_ids = {ev["document_id"] for ev in evidence} if evidence else set()
+
+def _render_signal_card(
+    sig: dict,
+    store: MemoryStore,
+    total_docs: int = 10,
+    risk_id: str = "RISK-???",
+    detected_categories: set | None = None,
+    doc_map: dict | None = None,
+) -> None:
+    """Render a full enterprise signal card with evidence, narration, and feedback."""
+    detected_categories = detected_categories or set()
+    doc_map = doc_map or {}
+
+    severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
+    confidence_pct = _confidence_display(sig)
+    trend_label = _TREND_LABELS.get(sig.get("trend", "stable"), "➡️ Stable")
+
+    # Fetch and filter evidence
+    raw_evidence = store.get_evidence_for_signal(sig["id"])
+    evidence = _filter_evidence(raw_evidence)
+    doc_ids = {ev["document_id"] for ev in raw_evidence} if raw_evidence else set()
     doc_count = len(doc_ids)
 
-    doc_label = f"{doc_count}/{total_docs} docs" if doc_count else ""
     header = (
-        f"{severity_icon} **{sig['title']}**  "
+        f"{severity_icon} `{risk_id}` **{sig['title']}**  "
         f"·  {confidence_pct} confidence  "
-        f"·  {doc_label}  "
-        f"·  {trend_icon} {sig['trend'].title()}"
+        f"·  {doc_count}/{total_docs} docs  "
+        f"·  {trend_label}"
     )
 
     with st.expander(header, expanded=(sig["severity"] == "STRONG")):
@@ -220,19 +316,25 @@ def _render_signal_card(sig: dict, store: MemoryStore, total_docs: int = 10) -> 
         with col_detail:
             # ── Metric row ────────────────────────────────────────────────────
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Category", sig["category"].replace("_", " ").title())
+            m1.metric("Risk ID", risk_id)
             m2.metric("Severity", sig["severity"].title())
             m3.metric("Confidence", confidence_pct)
-            m4.metric("Detected in", f"{doc_count}/{total_docs} docs" if doc_count else "—")
+            m4.metric("Detected in", f"{doc_count}/{total_docs} docs")
 
-            # ── Affected functional areas ─────────────────────────────────────
+            # ── Affected areas + owner ────────────────────────────────────────
             areas = _CATEGORY_AREAS.get(sig["category"], [])
-            if areas:
-                st.markdown(
-                    f"**Affected areas:** "
-                    + " · ".join(f"`{a}`" for a in areas)
-                    + f"  ·  **Owner:** `{sig['suggested_owner_role']}`"
-                )
+            st.markdown(
+                "**Affected areas:** "
+                + " · ".join(f"`{a}`" for a in areas)
+                + f"  ·  **Owner:** `{sig['suggested_owner_role']}`"
+            )
+
+            # ── Business Impact ───────────────────────────────────────────────
+            impacts = _CATEGORY_BUSINESS_IMPACT.get(sig["category"], [])
+            if impacts:
+                with st.expander("💼 Why should leadership care?", expanded=True):
+                    for imp in impacts:
+                        st.markdown(f"• {imp}")
 
             # ── Executive Summary ─────────────────────────────────────────────
             narration = sig.get("narration")
@@ -240,46 +342,67 @@ def _render_signal_card(sig: dict, store: MemoryStore, total_docs: int = 10) -> 
                 st.markdown("**Executive Summary**")
                 st.info(narration)
 
-            # ── Evidence ──────────────────────────────────────────────────────
+            # ── Evidence with source traceability ────────────────────────────
             if evidence:
                 st.markdown(
                     f"**Evidence** — corroborated across **{doc_count} document(s)** "
-                    f"· {len(evidence)} matching passage(s)"
+                    f"· {len(raw_evidence)} passage(s) found · showing top {len(evidence)}"
                 )
-                for ev in evidence[:5]:
+                for ev in evidence:
                     snippet = ev["snippet"].strip()
-                    if snippet:
-                        st.markdown(f"> _{snippet}_")
+                    if not snippet:
+                        continue
+                    src_file = doc_map.get(ev.get("document_id", ""), "")
+                    src_label = f"`{src_file}`" if src_file else ""
+                    st.markdown(f"> _{snippet}_")
+                    if src_label:
+                        st.caption(f"Source: {src_label}")
             else:
                 st.caption("No evidence snippets stored for this signal.")
 
-            # ── Explainability ────────────────────────────────────────────────
-            with st.expander("🔍 Why was this signal detected?", expanded=False):
-                indicators = _get_matched_indicators(sig["category"], evidence)
-                severity_rule = (
-                    f"Pattern corroborated across {doc_count} of {total_docs} documents "
-                    f"— meets the {'STRONG (4+)' if sig['severity'] == 'STRONG' else 'WEAK (2–3)'} threshold"
-                )
-                st.markdown(f"**Detection method:** Sentence-level contextual pattern matching")
-                st.markdown(f"**Corroboration:** {severity_rule}")
+            # ── Risk Relationships ────────────────────────────────────────────
+            causes = [
+                c for c in _RISK_CAUSES.get(sig["category"], [])
+                if c in detected_categories
+            ]
+            if causes:
+                with st.expander("🔗 Risk Relationships", expanded=False):
+                    st.markdown(f"**{sig['title']}** is driven by:")
+                    for cause_cat in causes:
+                        cat_label = cause_cat.replace("_", " ").title()
+                        st.markdown(f"  → **{cat_label}** _(also detected in this programme)_")
+
+            # ── Severity Reasoning + Confidence Breakdown ─────────────────────
+            with st.expander("🔍 Why this severity? How was confidence calculated?", expanded=False):
+                indicators = _get_matched_indicators(sig["category"], raw_evidence)
+                # Severity reasoning
+                st.markdown(f"**{sig['severity']} because:**")
+                st.markdown(f"  ✓ Found in **{doc_count} of {total_docs} documents**")
+                if doc_count >= 4:
+                    st.markdown("  ✓ Multiple teams corroborated independently")
+                if sig["category"] in ("operational", "delivery_risk"):
+                    st.markdown("  ✓ Business-critical category — production / timeline impact")
                 if indicators:
-                    st.markdown("**Matched indicators found in evidence:**")
-                    cols = st.columns(3)
-                    for i, ind in enumerate(indicators):
-                        cols[i % 3].markdown(f"✓ _{ind}_")
+                    st.markdown(f"  ✓ Matched patterns: _{', '.join(indicators)}_")
+                # Confidence breakdown
+                st.markdown("---")
+                st.markdown("**Confidence breakdown:**")
                 score = sig.get("confidence_score") or 0
-                st.markdown(
-                    f"**Confidence breakdown:** {confidence_pct}  \n"
-                    f"— Document coverage: {doc_count}/{total_docs}  \n"
-                    f"— Evidence passages: {len(evidence)}  \n"
-                    f"— Severity: {sig['severity']}  \n"
-                    f"— First detected: {sig['created_at'][:10]}"
-                )
+                st.markdown(f"  · Documents matched: **{doc_count}/{total_docs}**")
+                st.markdown(f"  · Evidence passages: **{len(raw_evidence)}**")
+                st.markdown(f"  · Cross-team corroboration: **{'Yes' if doc_count >= 4 else 'Partial'}**")
+                st.markdown(f"  · Severity: **{sig['severity']}**")
+                st.markdown(f"  · Final score: **{confidence_pct}**")
+                st.markdown(f"  · First detected: {sig['created_at'][:10]}")
 
         with col_action:
-            st.markdown("**Recommended actions:**")
+            # ── Smart urgency ─────────────────────────────────────────────────
+            urgency = _smart_urgency(sig, doc_count, total_docs, len(evidence))
+            st.markdown(urgency)
+            st.markdown("---")
 
-            # ── Category-specific quick actions ───────────────────────────────
+            # ── Recommended actions ───────────────────────────────────────────
+            st.markdown("**Recommended actions:**")
             actions = _CATEGORY_QUICK_ACTIONS.get(sig["category"], ["Escalate to owner"])
             for action in actions:
                 st.markdown(f"→ {action}")
@@ -615,30 +738,72 @@ elif page == "📡 Signal Dashboard":
         st.info("No active signals yet. Upload documents and click **Detect Signals**.")
     else:
         strong_signals = [s for s in actionable if s["severity"] == "STRONG"]
-        weak_signals = [s for s in actionable if s["severity"] == "WEAK"]
+        weak_signals   = [s for s in actionable if s["severity"] == "WEAK"]
+        detected_cats  = {s["category"] for s in actionable}
 
-        # ── Programme Summary ────────────────────────────────────────────────────
-        top_categories = [s["category"].replace("_", " ").title() for s in strong_signals[:3]]
-        health_label = "🔴 Critical" if len(strong_signals) >= 4 else "🟡 At Risk" if strong_signals else "🟢 Healthy"
-        summary_parts = [f"**{health_label}** · Across **{_total_docs_for_card} meeting notes**, "]
-        summary_parts.append(f"**{len(actionable)} risk signals** detected")
-        if strong_signals:
-            summary_parts.append(
-                f" · Primary concerns: {', '.join(top_categories)}"
-                if top_categories else ""
+        # Fetch doc map once for evidence traceability
+        doc_map = store.get_document_map()
+
+        # Assign risk IDs sorted by doc coverage (highest first)
+        # We need per-signal doc counts for this, fetch evidence counts
+        def _ev_doc_count(sig_id: str) -> int:
+            ev = store.get_evidence_for_signal(sig_id)
+            return len({e["document_id"] for e in ev}) if ev else 0
+
+        sorted_signals = sorted(
+            actionable,
+            key=lambda s: (_ev_doc_count(s["id"]), s["severity"] == "STRONG"),
+            reverse=True,
+        )
+        risk_id_map = {s["id"]: f"RISK-{i+1:03d}" for i, s in enumerate(sorted_signals)}
+
+        # ── Top Programme Risks summary ──────────────────────────────────────────
+        health_label = (
+            "🔴 Critical" if len(strong_signals) >= 4
+            else "🟡 At Risk" if strong_signals
+            else "🟢 Healthy"
+        )
+        st.markdown(f"#### {health_label} — Programme Risk Summary")
+        st.markdown(
+            f"Across **{_total_docs_for_card} meeting notes**, "
+            f"**{len(actionable)} risk signals** were detected."
+        )
+        # Ranked risk list
+        ranked = [(s, _ev_doc_count(s["id"])) for s in actionable]
+        ranked.sort(key=lambda x: (x[1], x[0]["severity"] == "STRONG"), reverse=True)
+        for i, (s, cnt) in enumerate(ranked, 1):
+            sev_icon = "🔴" if s["severity"] == "STRONG" else "🟡"
+            cat_label = s["category"].replace("_", " ").title()
+            st.markdown(
+                f"{i}. {sev_icon} **{cat_label}** "
+                f"({cnt}/{_total_docs_for_card} docs)"
             )
-        summary_parts.append(". Immediate leadership review recommended." if strong_signals else ".")
-        st.info("".join(summary_parts))
+
+        if strong_signals:
+            st.caption("⚠️ Immediate leadership attention recommended for 🔴 signals.")
+        st.markdown("---")
 
         if strong_signals:
             st.markdown(f"### 🔴 Strong Signals ({len(strong_signals)})")
             for sig in strong_signals:
-                _render_signal_card(sig, store, total_docs=_total_docs_for_card)
+                _render_signal_card(
+                    sig, store,
+                    total_docs=_total_docs_for_card,
+                    risk_id=risk_id_map.get(sig["id"], "RISK-???"),
+                    detected_categories=detected_cats,
+                    doc_map=doc_map,
+                )
 
         if weak_signals:
             st.markdown(f"### 🟡 Weak Signals ({len(weak_signals)})")
             for sig in weak_signals:
-                _render_signal_card(sig, store, total_docs=_total_docs_for_card)
+                _render_signal_card(
+                    sig, store,
+                    total_docs=_total_docs_for_card,
+                    risk_id=risk_id_map.get(sig["id"], "RISK-???"),
+                    detected_categories=detected_cats,
+                    doc_map=doc_map,
+                )
 
 
 # ── Page: Analytics ───────────────────────────────────────────────────────────

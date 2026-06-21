@@ -259,11 +259,18 @@ class MemoryStore:
                 """
                 SELECT * FROM evidence
                 WHERE signal_id = ?
-                ORDER BY relevance_score DESC
+                ORDER BY relevance_score DESC, source_count DESC
                 """,
                 (signal_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_document_map(self) -> dict[str, str]:
+        """Return {document_id: filename} for all documents.
+        Used by the signal card renderer to label evidence by source file."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT id, filename FROM documents").fetchall()
+        return {row["id"]: row["filename"] for row in rows}
 
     # ── Feedback ──────────────────────────────────────────────────────────────
 
