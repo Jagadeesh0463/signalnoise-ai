@@ -131,39 +131,108 @@ with st.sidebar:
         st.rerun()
 
 
-# ── Helper: render signal card ────────────────────────────────────────────────
+# ── Category metadata for UI ──────────────────────────────────────────────────
+
+_CATEGORY_AREAS: dict[str, list[str]] = {
+    "team_health":    ["Engineering", "Support", "Management"],
+    "delivery_risk":  ["Programme", "Engineering", "Product"],
+    "attrition":      ["HR", "Engineering", "Management"],
+    "bus_factor":     ["Engineering", "Architecture", "Platform"],
+    "dependency":     ["Platform", "Engineering", "External Vendors"],
+    "technical_debt": ["Engineering", "QA", "DevOps"],
+    "operational":    ["SRE", "DevOps", "Support"],
+}
+
+_CATEGORY_INDICATORS: dict[str, list[str]] = {
+    "team_health":    ["overtime", "weekend", "exhausted", "morale", "burnout",
+                       "overloaded", "overwhelmed", "under pressure", "tired",
+                       "stretched", "capacity", "demoralised", "demoralized"],
+    "delivery_risk":  ["velocity", "carry-forward", "not on track", "missed",
+                       "behind schedule", "slipped", "at risk", "milestone",
+                       "carry forward", "below", "sprint", "commitment"],
+    "attrition":      ["leaving", "resignation", "transfer", "looking elsewhere",
+                       "turnover", "backfill", "reduced hours", "stepping down",
+                       "looking for", "actively looking", "retention risk"],
+    "bus_factor":     ["only person", "sole", "undocumented", "bus factor",
+                       "knowledge silo", "if she leaves", "if he leaves",
+                       "serious trouble", "single point", "no backup",
+                       "knowledge transfer", "poorly documented"],
+    "dependency":     ["blocked", "waiting", "vendor", "api", "unresolved",
+                       "no response", "escalated", "overdue", "dependency",
+                       "blocker", "waiting for", "not responding"],
+    "technical_debt": ["test coverage", "bugs slipping", "technical debt",
+                       "legacy", "no staging", "qa bottleneck", "below 30%",
+                       "without tests", "production bug", "rework", "flaky"],
+    "operational":    ["outage", "incident", "deployment failed", "monitoring",
+                       "batch job", "undetected", "sla", "rollback", "hotfix",
+                       "suppressed", "silent failure", "affected"],
+}
+
+_CATEGORY_QUICK_ACTIONS: dict[str, list[str]] = {
+    "team_health":    ["Reduce workload", "Schedule 1:1 check-ins", "Rebalance capacity"],
+    "delivery_risk":  ["Review sprint commitments", "Escalate to Director", "Identify recovery plan"],
+    "attrition":      ["HR retention conversations", "1:1 with at-risk engineers", "Review workload"],
+    "bus_factor":     ["Start knowledge transfer", "Documentation sprint", "Pair programming sessions"],
+    "dependency":     ["Escalate to vendor directly", "Identify workaround path", "Programme review"],
+    "technical_debt": ["Increase test coverage", "QA capacity review", "Debt reduction sprint"],
+    "operational":    ["SRE incident review", "Fix monitoring gaps", "Staging environment required"],
+}
+
+
+def _get_matched_indicators(category: str, evidence: list[dict]) -> list[str]:
+    """Extract matched indicator phrases found in the evidence for this category."""
+    indicators = _CATEGORY_INDICATORS.get(category, [])
+    all_text = " ".join(ev.get("snippet", "").lower() for ev in evidence)
+    found = [ind for ind in indicators if ind.lower() in all_text]
+    return found[:6]  # show at most 6
+
 
 def _confidence_display(sig: dict) -> str:
-    """Return the computed confidence percentage, or estimate from band."""
     score = sig.get("confidence_score")
     if score:
         return f"{score}%"
-    # Fallback for signals saved before confidence engine
     band = sig.get("confidence_band", "low")
     return {"high": "85%", "medium": "70%", "low": "55%"}.get(band, "55%")
 
 
-def _render_signal_card(sig: dict, store: MemoryStore) -> None:
+def _render_signal_card(sig: dict, store: MemoryStore, total_docs: int = 10) -> None:
     """Render a full enterprise signal card with evidence, narration, and feedback."""
     severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
     trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
     confidence_pct = _confidence_display(sig)
 
-    with st.expander(
-        f"{severity_icon} **{sig['title']}**  ·  {confidence_pct} confidence  ·  {trend_icon} {sig['trend'].title()}",
-        expanded=(sig["severity"] == "STRONG"),
-    ):
+    # Fetch evidence upfront so we can use it in the header
+    evidence = store.get_evidence_for_signal(sig["id"])
+    doc_ids = {ev["document_id"] for ev in evidence} if evidence else set()
+    doc_count = len(doc_ids)
+
+    doc_label = f"{doc_count}/{total_docs} docs" if doc_count else ""
+    header = (
+        f"{severity_icon} **{sig['title']}**  "
+        f"·  {confidence_pct} confidence  "
+        f"·  {doc_label}  "
+        f"·  {trend_icon} {sig['trend'].title()}"
+    )
+
+    with st.expander(header, expanded=(sig["severity"] == "STRONG")):
         col_detail, col_action = st.columns([3, 1])
 
         with col_detail:
-            # ── Metadata row ──────────────────────────────────────────────────
+            # ── Metric row ────────────────────────────────────────────────────
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Category", sig["category"].replace("_", " ").title())
             m2.metric("Severity", sig["severity"].title())
             m3.metric("Confidence", confidence_pct)
-            m4.metric("Detected", sig["created_at"][:10])
+            m4.metric("Detected in", f"{doc_count}/{total_docs} docs" if doc_count else "—")
 
-            st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
+            # ── Affected functional areas ─────────────────────────────────────
+            areas = _CATEGORY_AREAS.get(sig["category"], [])
+            if areas:
+                st.markdown(
+                    f"**Affected areas:** "
+                    + " · ".join(f"`{a}`" for a in areas)
+                    + f"  ·  **Owner:** `{sig['suggested_owner_role']}`"
+                )
 
             # ── Executive Summary ─────────────────────────────────────────────
             narration = sig.get("narration")
@@ -172,58 +241,51 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
                 st.info(narration)
 
             # ── Evidence ──────────────────────────────────────────────────────
-            evidence = store.get_evidence_for_signal(sig["id"])
             if evidence:
-                doc_ids = {ev["document_id"] for ev in evidence}
                 st.markdown(
-                    f"**Evidence** — {len(doc_ids)} contributing document(s) · {len(evidence)} matching passage(s)"
+                    f"**Evidence** — corroborated across **{doc_count} document(s)** "
+                    f"· {len(evidence)} matching passage(s)"
                 )
                 for ev in evidence[:5]:
                     snippet = ev["snippet"].strip()
                     if snippet:
                         st.markdown(f"> _{snippet}_")
             else:
-                st.caption("No evidence snippets available for this signal.")
+                st.caption("No evidence snippets stored for this signal.")
 
             # ── Explainability ────────────────────────────────────────────────
             with st.expander("🔍 Why was this signal detected?", expanded=False):
-                doc_ids_for_sig = evidence and list({ev["document_id"] for ev in evidence})
-                doc_count_str = f"{len(doc_ids_for_sig)} documents" if doc_ids_for_sig else "multiple documents"
+                indicators = _get_matched_indicators(sig["category"], evidence)
                 severity_rule = (
-                    f"Found in {doc_count_str} — meets the STRONG threshold (4+ documents)"
-                    if sig["severity"] == "STRONG"
-                    else f"Found in {doc_count_str} — meets the WEAK threshold (2–3 documents)"
+                    f"Pattern corroborated across {doc_count} of {total_docs} documents "
+                    f"— meets the {'STRONG (4+)' if sig['severity'] == 'STRONG' else 'WEAK (2–3)'} threshold"
                 )
+                st.markdown(f"**Detection method:** Sentence-level contextual pattern matching")
+                st.markdown(f"**Corroboration:** {severity_rule}")
+                if indicators:
+                    st.markdown("**Matched indicators found in evidence:**")
+                    cols = st.columns(3)
+                    for i, ind in enumerate(indicators):
+                        cols[i % 3].markdown(f"✓ _{ind}_")
+                score = sig.get("confidence_score") or 0
                 st.markdown(
-                    f"- **Risk category:** {sig['category'].replace('_', ' ').title()}\n"
-                    f"- **Detection method:** Sentence-level contextual pattern matching across all uploaded documents\n"
-                    f"- **Corroboration:** {severity_rule}\n"
-                    f"- **Confidence:** {confidence_pct} (document coverage · evidence quality · pattern specificity)\n"
-                    f"- **Suggested owner:** {sig['suggested_owner_role']}\n"
-                    f"- **First detected:** {sig['created_at'][:10]}"
+                    f"**Confidence breakdown:** {confidence_pct}  \n"
+                    f"— Document coverage: {doc_count}/{total_docs}  \n"
+                    f"— Evidence passages: {len(evidence)}  \n"
+                    f"— Severity: {sig['severity']}  \n"
+                    f"— First detected: {sig['created_at'][:10]}"
                 )
 
         with col_action:
-            st.markdown("**Review this signal:**")
+            st.markdown("**Recommended actions:**")
 
-            # ── Recommended Action ────────────────────────────────────────────
-            action_map = {
-                "critical": "🚨 Escalate today",
-                "high":     "⚠️ Act this week",
-                "medium":   "📋 Plan next sprint",
-                "low":      "📝 Log and monitor",
-            }
-            # Derive priority from severity/confidence
-            score = sig.get("confidence_score") or 70
-            if sig["severity"] == "STRONG" and score >= 85:
-                priority_hint = "critical"
-            elif sig["severity"] == "STRONG":
-                priority_hint = "high"
-            elif score >= 70:
-                priority_hint = "medium"
-            else:
-                priority_hint = "low"
-            st.info(action_map[priority_hint])
+            # ── Category-specific quick actions ───────────────────────────────
+            actions = _CATEGORY_QUICK_ACTIONS.get(sig["category"], ["Escalate to owner"])
+            for action in actions:
+                st.markdown(f"→ {action}")
+
+            st.markdown("---")
+            st.markdown("**Log your decision:**")
 
             reviewer_role = st.selectbox(
                 "Your role",
@@ -407,14 +469,46 @@ elif page == "📡 Signal Dashboard":
                         )
                         _do_rerun = True
                     else:
-                        # ── Save embedded evidence from contextual scanner ───────
-                        # Every signal produced by the contextual engine already
-                        # carries matching sentences in signal.evidence. Persist
-                        # them to SQLite immediately so the UI never shows a
-                        # placeholder, even if the validator later finds more.
+                        # ── Step 1: Validate (may upgrade WEAK → STRONG) ────────
+                        validation_results = validate_signals(signals, anon_docs)
+
+                        evidence_by_signal: dict[str, list] = {
+                            vr.signal.id: vr.evidence_list
+                            for vr in validation_results if vr.passed
+                        }
+
+                        # ── Step 2: Build risks ─────────────────────────────────
+                        risks = build_risks(validation_results)
+
+                        # ── Step 3: Compute confidence ──────────────────────────
+                        confidence_map: dict[str, int] = {}
+                        for sig in signals:
+                            ev_list = evidence_by_signal.get(sig.id, [])
+                            score, _ = compute_confidence(sig, ev_list, total_docs=total_docs)
+                            confidence_map[sig.id] = score
+
+                        # ── Step 4: Narrate ─────────────────────────────────────
+                        signal_titles = {s.id: s.title for s in signals}
+                        signal_categories = {s.id: s.category for s in signals}
+                        narrate_risks(
+                            risks,
+                            signal_titles=signal_titles,
+                            signal_categories=signal_categories,
+                        )
+                        narration_map = {r.signal_id: r.narration for r in risks if r.narration}
+
+                        # ── Step 5: Save SIGNALS first (FK constraint) ──────────
+                        # Evidence has FOREIGN KEY (signal_id) → signals(id).
+                        # Signal must exist in the DB before evidence can be inserted.
                         for signal in signals:
-                            if not signal.evidence:
-                                continue
+                            store.save_signal(
+                                signal,
+                                narration=narration_map.get(signal.id),
+                                confidence_score=confidence_map.get(signal.id),
+                            )
+
+                        # ── Step 6: Save contextual evidence (signal now in DB) ──
+                        for signal in signals:
                             for i, snippet in enumerate(signal.evidence):
                                 snippet = snippet.strip()
                                 if not snippet or len(snippet) < 20:
@@ -437,57 +531,18 @@ elif page == "📡 Signal Dashboard":
                                         )
                                     )
                                 except Exception:
-                                    pass  # duplicate on re-run — safe to ignore
+                                    pass
 
-                        # Validate evidence for every actionable signal
-                        validation_results = validate_signals(signals, anon_docs)
-
-                        # ── Also save validator-found evidence ──────────────────
+                        # ── Step 7: Save validator evidence (additional snippets) ─
                         for vr in validation_results:
                             if vr.passed:
                                 for ev in vr.evidence_list:
                                     try:
                                         store.save_evidence(ev)
                                     except Exception:
-                                        pass  # already exists — upsert handles it
+                                        pass
 
-                        # Build evidence lookup for confidence engine
-                        evidence_by_signal: dict[str, list] = {
-                            vr.signal.id: vr.evidence_list
-                            for vr in validation_results if vr.passed
-                        }
-
-                        # Build risks from validated signals
-                        risks = build_risks(validation_results)
-
-                        # Compute confidence scores and store in session
-                        confidence_map: dict[str, int] = {}
-                        for sig in signals:
-                            ev_list = evidence_by_signal.get(sig.id, [])
-                            score, _ = compute_confidence(sig, ev_list, total_docs=total_docs)
-                            confidence_map[sig.id] = score
-
-                        # Narrate with category-specific prompts
-                        signal_titles = {s.id: s.title for s in signals}
-                        signal_categories = {s.id: s.category for s in signals}
-                        narrate_risks(
-                            risks,
-                            signal_titles=signal_titles,
-                            signal_categories=signal_categories,
-                        )
-
-                        # Build narration lookup
-                        narration_map = {r.signal_id: r.narration for r in risks if r.narration}
-
-                        # Save signals with narration and computed confidence %
-                        for signal in signals:
-                            store.save_signal(
-                                signal,
-                                narration=narration_map.get(signal.id),
-                                confidence_score=confidence_map.get(signal.id),
-                            )
-
-                        # Update knowledge graph
+                        # ── Step 8: Update knowledge graph ──────────────────────
                         kg = get_kg()
                         for vr in validation_results:
                             if vr.passed and anon_docs:
@@ -495,8 +550,8 @@ elif page == "📡 Signal Dashboard":
 
                         st.session_state.pipeline_ran = True
                         st.session_state.confidence_map = confidence_map
-                        actionable_count = len(signals)
-                        st.success(f"✅ Detection complete — {actionable_count} actionable signals found.")
+                        st.session_state.total_docs = total_docs
+                        st.success(f"✅ Detection complete — {len(signals)} signals found.")
                         _do_rerun = True
 
             except Exception as e:
@@ -553,21 +608,37 @@ elif page == "📡 Signal Dashboard":
                 use_container_width=True,
             )
 
+    # Resolve total_docs for card display
+    _total_docs_for_card = st.session_state.get("total_docs", total_docs)
+
     if not actionable:
         st.info("No active signals yet. Upload documents and click **Detect Signals**.")
     else:
         strong_signals = [s for s in actionable if s["severity"] == "STRONG"]
         weak_signals = [s for s in actionable if s["severity"] == "WEAK"]
 
+        # ── Programme Summary ────────────────────────────────────────────────────
+        top_categories = [s["category"].replace("_", " ").title() for s in strong_signals[:3]]
+        health_label = "🔴 Critical" if len(strong_signals) >= 4 else "🟡 At Risk" if strong_signals else "🟢 Healthy"
+        summary_parts = [f"**{health_label}** · Across **{_total_docs_for_card} meeting notes**, "]
+        summary_parts.append(f"**{len(actionable)} risk signals** detected")
+        if strong_signals:
+            summary_parts.append(
+                f" · Primary concerns: {', '.join(top_categories)}"
+                if top_categories else ""
+            )
+        summary_parts.append(". Immediate leadership review recommended." if strong_signals else ".")
+        st.info("".join(summary_parts))
+
         if strong_signals:
             st.markdown(f"### 🔴 Strong Signals ({len(strong_signals)})")
             for sig in strong_signals:
-                _render_signal_card(sig, store)
+                _render_signal_card(sig, store, total_docs=_total_docs_for_card)
 
         if weak_signals:
             st.markdown(f"### 🟡 Weak Signals ({len(weak_signals)})")
             for sig in weak_signals:
-                _render_signal_card(sig, store)
+                _render_signal_card(sig, store, total_docs=_total_docs_for_card)
 
 
 # ── Page: Analytics ───────────────────────────────────────────────────────────
