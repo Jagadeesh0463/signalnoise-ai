@@ -1,12 +1,6 @@
 # SignalNoise AI — Dependencies
 # Install: pip install -r requirements.txt
 
-# ── PyTorch CPU-only (must come first) ───────────────────────────────────────
-# Forces CPU-only PyTorch (~200MB) instead of CUDA version (~1.5GB).
-# Critical for Streamlit Cloud free tier — prevents build timeout.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.12.1+cpu
-
 # ── Core NLP / Signal Detection ──────────────────────────────────────────────
 bertopic>=0.16.4
 sentence-transformers>=3.0.1        # MiniLM embeddings
