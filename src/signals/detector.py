@@ -58,18 +58,34 @@ RISK_KEYWORDS = {
     "delayed", "delay", "blocked", "blocking", "overdue", "slipped",
     "missed", "behind", "critical", "escalate", "escalation", "risk",
     "blocker", "dependency", "deadline", "milestone", "pushed", "deferred",
+    "velocity", "sprint", "capacity", "commitments", "rework",
 
-    # Team health
-    "burnout", "understaffed", "capacity", "overwhelmed", "attrition",
+    # Team burnout & health
+    "burnout", "understaffed", "overwhelmed", "attrition", "overtime",
     "leaving", "resigned", "morale", "frustrated", "unclear", "confusion",
+    "tired", "exhausted", "overloaded", "weekend", "hours", "allocation",
+    "workload", "stress", "wellbeing", "disengaged", "unhappy",
+
+    # Attrition & retention
+    "transfer", "resignation", "leaving", "elsewhere", "headcount",
+    "retention", "quit", "replace", "backfill", "single", "only",
+
+    # Bus factor / knowledge concentration
+    "only", "sole", "single", "knowledge", "understands", "bus",
+    "silos", "silo", "documentation", "undocumented", "depends",
+
+    # Technical debt & quality
+    "debt", "coverage", "tests", "testing", "qa", "quality", "bugs",
+    "rework", "refactor", "legacy", "fragile", "flaky", "manual",
+    "regression", "production", "hotfix", "patch",
 
     # Operational
     "incident", "outage", "failure", "failing", "degraded", "alert",
     "rollback", "hotfix", "breach", "error", "crash", "broken",
 
     # Process breakdown
-    "unclear", "no owner", "unresolved", "pending", "waiting", "stuck",
-    "no update", "no response", "ignored", "dropped", "forgotten",
+    "unresolved", "pending", "waiting", "stuck", "ignored", "dropped",
+    "no response", "forgotten", "escalated", "unanswered",
 }
 
 
@@ -244,21 +260,37 @@ def _classify_confidence(severity: str, doc_count: int) -> str:
 def _infer_category(top_words: list[str]) -> str:
     """
     Infer signal category from BERTopic's top keywords.
-    Returns one of: delivery_risk | team_health | operational | dependency
+    Returns one of: delivery_risk | team_health | attrition | bus_factor |
+                    technical_debt | operational | dependency
     """
     words = {w.lower() for w in top_words}
 
-    operational_words = {"incident", "outage", "failure", "alert", "rollback", "hotfix", "crash"}
-    team_words = {"burnout", "capacity", "morale", "attrition", "understaffed", "leaving"}
-    dependency_words = {"blocked", "blocking", "dependency", "waiting", "vendor", "approval"}
+    attrition_words   = {"transfer", "resignation", "leaving", "elsewhere",
+                         "quit", "replace", "backfill", "retention", "headcount"}
+    bus_factor_words  = {"sole", "single", "only", "undocumented", "silo",
+                         "silos", "understands", "bus", "knowledge"}
+    tech_debt_words   = {"debt", "coverage", "qa", "quality", "rework",
+                         "refactor", "legacy", "flaky", "regression", "testing"}
+    burnout_words     = {"burnout", "overtime", "weekend", "exhausted", "tired",
+                         "overloaded", "morale", "wellbeing", "stress", "allocation"}
+    operational_words = {"incident", "outage", "failure", "alert", "rollback",
+                         "hotfix", "crash", "degraded", "breach"}
+    dependency_words  = {"blocked", "blocking", "dependency", "waiting",
+                         "vendor", "approval", "unresolved", "api", "records"}
 
+    if words & attrition_words:
+        return "attrition"
+    if words & bus_factor_words:
+        return "bus_factor"
+    if words & tech_debt_words:
+        return "technical_debt"
+    if words & burnout_words:
+        return "team_health"
     if words & operational_words:
         return "operational"
-    if words & team_words:
-        return "team_health"
     if words & dependency_words:
         return "dependency"
-    return "delivery_risk"   # default — most common in MVP context
+    return "delivery_risk"
 
 
 def _make_title(category: str, top_words: list[str]) -> str:
@@ -314,8 +346,36 @@ def _make_title(category: str, top_words: list[str]) -> str:
             return "Operational Alert Threshold Breached"
         return "Operational Risk Detected"
 
+    # ── Attrition titles ─────────────────────────────────────────────────────
+    if category == "attrition":
+        if words & {"transfer", "elsewhere", "looking", "leaving"}:
+            return "Employee Attrition Risk"
+        if words & {"resignation", "quit", "backfill", "replace"}:
+            return "Staff Resignation Risk"
+        return "Retention and Attrition Risk"
+
+    # ── Bus factor / knowledge concentration ─────────────────────────────────
+    if category == "bus_factor":
+        if words & {"sole", "single", "only", "understands"}:
+            return "Knowledge Concentration Risk"
+        if words & {"silo", "silos", "undocumented", "documentation"}:
+            return "Knowledge Silo Risk"
+        return "Single Point of Failure — People"
+
+    # ── Technical debt / quality ──────────────────────────────────────────────
+    if category == "technical_debt":
+        if words & {"coverage", "testing", "qa", "bugs"}:
+            return "Engineering Quality Risk"
+        if words & {"debt", "legacy", "refactor", "rework"}:
+            return "Technical Debt Accumulation"
+        if words & {"flaky", "regression", "hotfix", "patch"}:
+            return "Test Stability and Regression Risk"
+        return "Engineering Quality Risk"
+
     # ── Dependency titles ─────────────────────────────────────────────────────
     if category == "dependency":
+        if words & {"records", "student", "lms", "data"}:
+            return "Critical External API Dependency Risk"
         if words & {"auth", "api", "authentication", "login"}:
             return "Auth API Dependency Blocker"
         if words & {"vendor", "external", "third", "supplier"}:
@@ -364,12 +424,15 @@ def _build_signal(
         for d in doc_group
     ]
 
-    # Suggested owner by category — diversified per reviewer feedback
+    # Suggested owner by category
     owner_map = {
-        "delivery_risk": "Program-Manager",
-        "team_health":   "Engineering-Manager",
-        "operational":   "SRE-Lead",
-        "dependency":    "Platform-Lead",
+        "delivery_risk":  "Program-Manager",
+        "team_health":    "Engineering-Manager",
+        "attrition":      "HR-Business-Partner",
+        "bus_factor":     "Engineering-Manager",
+        "technical_debt": "Engineering-Lead",
+        "operational":    "SRE-Lead",
+        "dependency":     "Platform-Lead",
     }
 
     return Signal(

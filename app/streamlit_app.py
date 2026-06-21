@@ -132,23 +132,31 @@ with st.sidebar:
 
 # ── Helper: render signal card ────────────────────────────────────────────────
 
-def _confidence_display(band: str) -> str:
-    """Convert confidence band to a human-readable percentage range."""
-    return {
-        "high":   "High (85–95%)",
-        "medium": "Medium (65–84%)",
-        "low":    "Low (40–64%)",
-    }.get(band, band)
+def _confidence_display(band: str, evidence_count: int = 0) -> str:
+    """
+    Convert confidence band + evidence count to a specific percentage.
+
+    More evidence → higher confidence within each band.
+    """
+    if band == "high":
+        pct = min(97, 85 + evidence_count * 2)
+    elif band == "medium":
+        pct = min(84, 65 + evidence_count * 3)
+    else:
+        pct = min(64, 40 + evidence_count * 4)
+    return f"{pct}%"
 
 
 def _render_signal_card(sig: dict, store: MemoryStore) -> None:
     """Render a single signal card with evidence, narration, and feedback buttons."""
     severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
     trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
-    confidence_label = _confidence_display(sig["confidence_band"])
+
+    evidence = store.get_evidence_for_signal(sig["id"])
+    confidence_pct = _confidence_display(sig["confidence_band"], len(evidence))
 
     with st.expander(
-        f"{severity_icon} **{sig['title']}**  ·  {trend_icon} {sig['trend'].title()}  ·  {confidence_label}",
+        f"{severity_icon} **{sig['title']}**  ·  {trend_icon} {sig['trend'].title()}  ·  {confidence_pct} confidence",
         expanded=(sig["severity"] == "STRONG"),
     ):
         col_detail, col_action = st.columns([3, 1])
@@ -157,7 +165,7 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
             cat_display = sig["category"].replace("_", " ").title()
             st.markdown(f"**Category:** {cat_display}")
             st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
-            st.markdown(f"**Confidence:** {confidence_label}")
+            st.markdown(f"**Confidence:** {confidence_pct}")
             st.markdown(f"**Detected:** {sig['created_at'][:10]}")
 
             # Executive summary from LLM narration
@@ -166,19 +174,25 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
                 st.markdown("**Executive Summary:**")
                 st.info(narration)
 
-            # Evidence snippets
-            evidence = store.get_evidence_for_signal(sig["id"])
+            # Evidence section — doc count, mention count, snippets
             if evidence:
-                st.markdown("**Evidence:**")
-                for ev in evidence[:4]:
-                    st.markdown(f"> _{ev['snippet']}_")
+                doc_ids = {ev["document_id"] for ev in evidence}
+                st.markdown(
+                    f"**Evidence** — {len(doc_ids)} document(s) · {len(evidence)} mention(s)"
+                )
+                for ev in evidence[:5]:
+                    snippet = ev["snippet"].strip()
+                    if snippet:
+                        st.markdown(f"> _{snippet}_")
+            else:
+                st.caption("No evidence snippets stored for this signal.")
 
         with col_action:
             st.markdown("**Your feedback:**")
             reviewer_role = st.selectbox(
                 "Your role",
                 ["Program-Manager", "Engineering-Manager", "Platform-Lead",
-                 "SRE-Lead", "Director"],
+                 "HR-Business-Partner", "Engineering-Lead", "SRE-Lead", "Director"],
                 key=f"role_{sig['id']}",
                 label_visibility="collapsed",
             )
@@ -304,7 +318,8 @@ elif page == "📡 Signal Dashboard":
     with col_filter1:
         category_filter = st.selectbox(
             "Category",
-            ["All", "Delivery Risk", "Team Health", "Operational", "Dependency"],
+            ["All", "Delivery Risk", "Team Health", "Attrition", "Bus Factor",
+             "Technical Debt", "Operational", "Dependency"],
             label_visibility="visible",
         )
 
