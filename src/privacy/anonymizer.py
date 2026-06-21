@@ -98,9 +98,9 @@ def _assign_role_code(original: str, entity_type: str, role_map: dict[str, str])
     Same name always gets the same role code within one document.
 
     Example:
-        "John Smith"  → "[Person-A]"
-        "Jane Doe"    → "[Person-B]"
-        "John Smith"  → "[Person-A]"  (same code, second occurrence)
+        "Priya Sharma"  → "[Person-A]"
+        "Ravi Kumar"    → "[Person-B]"
+        "Priya Sharma"  → "[Person-A]"  (same code, second occurrence)
     """
     if original in role_map:
         return role_map[original]

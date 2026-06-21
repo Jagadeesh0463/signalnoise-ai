@@ -1,6 +1,6 @@
 # Roadmap
 
-## Sprint 1 — Core Pipeline (Complete ✅)
+## v1.0 — Core Pipeline (Released ✅)
 
 - [x] Data ingestion: `.txt`, `.docx`, `.pdf` support
 - [x] Quality gate: 6 validation rules
@@ -9,15 +9,16 @@
 - [x] BERTopic signal detection (NOISE / WEAK / STRONG)
 - [x] Evidence corroboration across documents
 - [x] Risk Intelligence with structured templates
-- [x] Groq narration with fallback
+- [x] LLM narration (Groq) with fallback and retry
 - [x] Streamlit dashboard with signal cards
 - [x] Confirm / Dismiss feedback loop
 - [x] SQLite audit trail
 - [x] 10 sample documents
+- [x] Docker, CI/CD, CodeQL, pre-commit, Makefile
 
 ---
 
-## Sprint 2 — Intelligence & Connectors
+## v1.1 — Intelligence & Connectors
 
 **Evidence display on signal cards**
 - Wire `store.save_evidence()` into the pipeline
@@ -33,18 +34,13 @@
 
 **Weekly digest**
 - Email digest of top 3 signals every Monday
-- `src/digest/digest.py` skeleton already in place
 
-**Jira connector**
-- Pull Jira ticket summaries for signal corroboration
-- Map ticket status to signal category
-
-**Confluence connector**
-- Index Confluence pages as document sources
+**Jira / Confluence connectors**
+- Pull ticket summaries and Confluence pages as document sources
 
 ---
 
-## Sprint 3 — API & Enterprise Readiness
+## v1.2 — API & Enterprise Readiness
 
 **FastAPI layer**
 - REST API wrapping the signal pipeline
@@ -52,47 +48,46 @@
 - OpenAPI documentation
 
 **Role-based access control**
-- Programme Manager sees all signals
+- Program Manager sees all signals
 - Team Lead sees signals for their team only
-- Director sees aggregated programme view
+- Director sees aggregated program view
 
 **Multi-language support**
 - Replace English-only quality gate with `langdetect`
-- Add multilingual spaCy model option
 - Add multilingual sentence-transformers model option
 
 **Custom risk taxonomy**
 - Admin UI to define custom signal categories
 - Custom RISK_KEYWORDS per organization
 
-**Ollama integration**
-- Drop-in replacement for Groq
-- Configuration via `LLM_PROVIDER=ollama` in `.env`
-- Default model: `llama3`
+**LLM provider flexibility**
+- Ollama (on-premise, `LLM_PROVIDER=ollama`)
+- Azure OpenAI (data-sovereign cloud)
+- OpenAI GPT-4o
 
 ---
 
-## Sprint 4 — Scale & Observability
+## v2.0 — Scale & Observability
 
 **Async pipeline**
-- Background task queue (Celery or asyncio) for document processing
+- Background task queue (Celery or asyncio)
 - Progress indicators in UI during long-running detection
 
 **Structured logging**
-- JSON log format for log aggregation (Datadog, Splunk, etc.)
+- JSON log format for log aggregation (Datadog, Splunk)
 - Request tracing with correlation IDs
 
 **Monitoring**
-- Prometheus metrics: documents processed, signals detected, Groq latency
+- Prometheus metrics: documents processed, signals detected, LLM latency
 - Grafana dashboard template
 
 **Horizontal scaling**
-- Move ChromaDB to a dedicated service
-- Move SQLite to PostgreSQL
-- Stateless Streamlit app with shared storage
+- ChromaDB dedicated service
+- SQLite → PostgreSQL
+- Stateless Streamlit with shared storage
 
-**Automated testing**
-- Increase test coverage to 95%+
+**Testing**
+- Increase coverage to 95%+
 - Integration tests with real BERTopic runs
 - End-to-end test with sample documents
 
@@ -104,4 +99,4 @@
 - Integration with HR systems for team structure context
 - Anonymized benchmarking across similar organizations
 - Mobile app for Program Manager alerts
-- Custom LLM fine-tuned on programme risk vocabulary
+- Custom LLM fine-tuned on program risk vocabulary

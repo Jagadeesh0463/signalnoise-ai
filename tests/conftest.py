@@ -131,8 +131,8 @@ def sample_anon_doc(sample_document) -> AnonymizedDocument:
             "[Programme-Manager-C] escalated to the director for urgent review."
         ),
         role_map={
-            "John Smith": "[Backend-Lead-A]",
-            "Jane Doe": "[Platform-Lead-B]",
+            "Arjun Mehta": "[Backend-Lead-A]",
+            "Sunita Rao": "[Platform-Lead-B]",
             "Priya R": "[Programme-Manager-C]",
         },
         processed_at=datetime.utcnow(),
