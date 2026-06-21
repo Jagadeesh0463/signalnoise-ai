@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  signalnoise:
+    build:
+      context: .
+      target: runtime
+    image: signalnoise-ai:latest
+    container_name: signalnoise-ai
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      # Persist ChromaDB and SQLite across restarts
+      - ./data/processed:/app/data/processed
+      # Mount sample data for demo
+      - ./data/sample:/app/data/sample:ro
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped

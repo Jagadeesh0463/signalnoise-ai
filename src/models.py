@@ -65,7 +65,7 @@ class AnonymizedDocument:
 @dataclass
 class Signal:
     """
-    A detected pattern in organisational communications.
+    A detected pattern in organizational communications.
 
     severity:         NOISE | WEAK | STRONG
     confidence_band:  low | medium | high  (never a raw float — PRD §8)

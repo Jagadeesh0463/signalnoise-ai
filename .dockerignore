@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Data (never bake into image)
+data/raw/
+data/processed/
+
+# Tests and dev tools
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Pre-commit
+.pre-commit-config.yaml
+.secrets.baseline
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docs (not needed at runtime)
+docs/
+*.md
+!app/
+
+# CI
+.github/

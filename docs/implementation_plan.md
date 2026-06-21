@@ -1,6 +1,6 @@
 # SignalNoise AI — Implementation Plan
 **Version:** 2.0 | **Status:** Approved for Build  
-**Author:** Bhagya Thallapalem | FLM Learning AI Training Program
+**Author:** S. Jagadeesh
 
 ---
 

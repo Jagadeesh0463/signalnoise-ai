@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install black isort flake8 mypy pytest-cov
+
+      - name: Download spaCy model
+        run: python -m spacy download en_core_web_sm
+
+      - name: Check code formatting (black)
+        run: black --check src/ app/ tests/
+
+      - name: Check import ordering (isort)
+        run: isort --check-only src/ app/ tests/
+
+      - name: Lint (flake8)
+        run: flake8 src/ app/ tests/
+
+      - name: Type check (mypy)
+        run: mypy src/ --ignore-missing-imports
+        env:
+          GROQ_API_KEY: test-key-ci
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
+        env:
+          GROQ_API_KEY: test-key-ci
+          MIN_DOCS_FOR_BERTOPIC: "2"
+          MIN_TOPIC_SIZE: "2"
+          SPACY_MODEL: en_core_web_sm
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false

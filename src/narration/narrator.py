@@ -21,6 +21,7 @@ Usage:
 """
 
 import logging
+import time
 
 from groq import Groq
 
@@ -30,11 +31,18 @@ from src.models import Risk
 
 logger = logging.getLogger(__name__)
 
+# ── Retry configuration ───────────────────────────────────────────────────────
+
+_MAX_RETRIES = 2          # total attempts = 1 + _MAX_RETRIES
+_RETRY_BASE_DELAY = 1.0   # seconds; doubles on each retry (exponential backoff)
+_REQUEST_TIMEOUT = 10.0   # seconds per Groq request
+
 # ── Groq client — loaded once ─────────────────────────────────────────────────
 _client: Groq | None = None
 
 
 def _get_client() -> Groq:
+    """Initialise the Groq client once and reuse across calls."""
     global _client
     if _client is None:
         logger.info("Initialising Groq client (model: %s)", config.GROQ_MODEL)
@@ -47,37 +55,52 @@ def _get_client() -> Groq:
 def _build_prompt(risk: Risk, signal_title: str) -> str:
     """
     Build a structured prompt for Groq.
+
     All values come from the Risk object — no raw document text is included.
+    The prompt is a template; user-controlled content is never interpolated
+    into the instruction portion (prevents prompt injection).
+
+    Args:
+        risk:         Structured Risk object.
+        signal_title: Title of the parent Signal.
+
+    Returns:
+        Complete prompt string for the Groq chat completion.
     """
-    return f"""You are a programme risk analyst writing a brief executive summary.
-
-You have been given a structured risk object detected from anonymised organisational communications.
-Write a 2-sentence plain-English executive summary for a Programme Manager.
-
-Rules:
-- Write exactly 2 sentences. No more, no less.
-- Use plain business language. No jargon.
-- Do not mention AI, machine learning, or detection systems.
-- Do not invent facts beyond what is provided below.
-- All role references use anonymised codes — keep them as-is.
-
-Risk data:
-- Signal: {signal_title}
-- Category: {risk.priority} priority {risk.suggested_owner_role} risk
-- Business impact: {risk.business_impact}
-- Root cause hypothesis: {risk.root_cause_hypothesis}
-- Suggested action: {risk.suggested_action}
-- Supporting evidence from {len(risk.supporting_document_ids)} document(s)
-
-Write the 2-sentence summary now:"""
+    return (
+        "You are a program risk analyst writing a brief executive summary.\n\n"
+        "You have been given a structured risk object detected from anonymized "
+        "organizational communications.\n"
+        "Write a 2-sentence plain-English executive summary for a Program Manager.\n\n"
+        "Rules:\n"
+        "- Write exactly 2 sentences. No more, no less.\n"
+        "- Use plain business language. No jargon.\n"
+        "- Do not mention AI, machine learning, or detection systems.\n"
+        "- Do not invent facts beyond what is provided below.\n"
+        "- All role references use anonymized codes — keep them as-is.\n\n"
+        "Risk data:\n"
+        f"- Signal: {signal_title}\n"
+        f"- Category: {risk.priority} priority {risk.suggested_owner_role} risk\n"
+        f"- Business impact: {risk.business_impact}\n"
+        f"- Root cause hypothesis: {risk.root_cause_hypothesis}\n"
+        f"- Suggested action: {risk.suggested_action}\n"
+        f"- Supporting evidence from {len(risk.supporting_document_ids)} document(s)\n\n"
+        "Write the 2-sentence summary now:"
+    )
 
 
 # ── Fallback narration ────────────────────────────────────────────────────────
 
 def _fallback_narration(risk: Risk) -> str:
     """
-    Used when Groq is unavailable or fails.
-    Produces a readable summary from structured fields — no LLM needed.
+    Produce a readable summary from structured Risk fields when Groq is unavailable.
+    Never raises — always returns a non-empty string.
+
+    Args:
+        risk: A Risk object with all fields populated.
+
+    Returns:
+        A plain-English summary built from structured fields.
     """
     return (
         f"{risk.business_impact} "
@@ -90,83 +113,121 @@ def _fallback_narration(risk: Risk) -> str:
 def narrate_risk(risk: Risk, signal_title: str = "Signal detected") -> Risk:
     """
     Generate a plain-English executive narration for a Risk object.
-    Populates risk.narration in place and returns the same Risk object.
 
-    If Groq fails for any reason, a fallback narration is used — the
-    pipeline never stops because of a narration failure.
+    Attempts to call Groq with exponential backoff retry. If all retries
+    fail, a structured fallback narration is used. The pipeline never stops
+    because of a narration failure.
 
     Args:
         risk:         A Risk object from Risk Intelligence (narration is empty).
         signal_title: The title of the parent Signal — used in the prompt.
 
     Returns:
-        The same Risk object with narration populated.
+        The same Risk object with narration populated (mutated in place).
     """
     if risk.narration:
         logger.info("Risk %s already has narration — skipping.", risk.id[:8])
         return risk
 
-    try:
-        client = _get_client()
-        prompt = _build_prompt(risk, signal_title)
+    prompt = _build_prompt(risk, signal_title)
+    last_error: Exception | None = None
 
-        logger.info(
-            "Calling Groq for risk=%s (model=%s)...",
-            risk.id[:8],
-            config.GROQ_MODEL,
-        )
+    for attempt in range(1 + _MAX_RETRIES):
+        try:
+            if attempt > 0:
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.info(
+                    "Retrying Groq for risk=%s (attempt %d/%d, delay=%.1fs)...",
+                    risk.id[:8],
+                    attempt + 1,
+                    1 + _MAX_RETRIES,
+                    delay,
+                )
+                time.sleep(delay)
 
-        response = client.chat.completions.create(
-            model=config.GROQ_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a concise programme risk analyst. "
-                        "You write exactly 2 sentences. You never invent facts."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,        # low temperature = consistent, factual output
-            max_tokens=150,         # 2 sentences needs no more than 150 tokens
-        )
+            client = _get_client()
 
-        narration = response.choices[0].message.content.strip()
+            logger.info(
+                "Calling Groq for risk=%s (model=%s, attempt=%d)...",
+                risk.id[:8],
+                config.GROQ_MODEL,
+                attempt + 1,
+            )
 
-        # Basic sanity check — must be non-empty
-        if not narration:
-            raise NarrationError("Groq returned an empty response.")
+            response = client.chat.completions.create(
+                model=config.GROQ_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a concise program risk analyst. "
+                            "You write exactly 2 sentences. You never invent facts."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,    # low temperature = consistent, factual output
+                max_tokens=150,     # 2 sentences needs no more than 150 tokens
+                timeout=_REQUEST_TIMEOUT,
+            )
 
-        risk.narration = narration
-        logger.info(
-            "Narration complete for risk=%s — %d chars.",
-            risk.id[:8],
-            len(narration),
-        )
+            narration = response.choices[0].message.content.strip()
 
-    except NarrationError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            "Groq call failed for risk=%s (%s) — using fallback narration.",
-            risk.id[:8],
-            exc,
-        )
-        risk.narration = _fallback_narration(risk)
+            if not narration:
+                raise NarrationError("Groq returned an empty response.")
 
+            risk.narration = narration
+            logger.info(
+                "Narration complete for risk=%s — %d chars (attempt %d).",
+                risk.id[:8],
+                len(narration),
+                attempt + 1,
+            )
+            return risk
+
+        except NarrationError:
+            # Empty response — no point retrying
+            logger.warning(
+                "Groq returned empty response for risk=%s — using fallback.",
+                risk.id[:8],
+            )
+            break
+
+        except Exception as exc:
+            last_error = exc
+            # Rate limit or server error — retry
+            logger.warning(
+                "Groq call failed for risk=%s (attempt %d/%d): %s",
+                risk.id[:8],
+                attempt + 1,
+                1 + _MAX_RETRIES,
+                exc,
+            )
+
+    # All retries exhausted — use fallback
+    logger.warning(
+        "All Groq retries failed for risk=%s — using fallback narration. Last error: %s",
+        risk.id[:8],
+        last_error,
+    )
+    risk.narration = _fallback_narration(risk)
     return risk
 
 
-def narrate_risks(risks: list[Risk], signal_titles: dict[str, str] | None = None) -> list[Risk]:
+def narrate_risks(
+    risks: list[Risk],
+    signal_titles: dict[str, str] | None = None,
+) -> list[Risk]:
     """
     Narrate a list of Risk objects.
+
     Continues even if individual narrations fail — fallback is used per risk.
+    Already-narrated risks are skipped.
 
     Args:
         risks:         List of Risk objects from Risk Intelligence.
         signal_titles: Optional dict mapping signal_id → signal title.
-                       If not provided, a generic title is used.
+                       A generic title is used if not provided.
 
     Returns:
         The same list of Risk objects with narration populated on each.
@@ -178,7 +239,7 @@ def narrate_risks(risks: list[Risk], signal_titles: dict[str, str] | None = None
     signal_titles = signal_titles or {}
 
     for risk in risks:
-        title = signal_titles.get(risk.signal_id, "Organisational risk signal detected")
+        title = signal_titles.get(risk.signal_id, "Organizational risk signal detected")
         narrate_risk(risk, signal_title=title)
 
     narrated = sum(1 for r in risks if r.narration)

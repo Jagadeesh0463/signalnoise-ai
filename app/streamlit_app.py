@@ -2,22 +2,24 @@
 app/streamlit_app.py
 
 SignalNoise AI — Streamlit Dashboard
-Sprint 1 version: Upload → Process → Signal Cards → Confirm/Dismiss
+Sprint 1: Upload → Process → Signal Cards → Confirm/Dismiss
 
 Run:
     streamlit run app/streamlit_app.py
 """
 
+import io
 import os
 import sys
 import uuid
 from pathlib import Path
 
-# Ensure src/ is importable
+# Ensure src/ is importable when running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 os.environ.setdefault("GROQ_API_KEY", "not-set")
 
+import pandas as pd
 import streamlit as st
 
 from src.config import config
@@ -37,6 +39,25 @@ st.set_page_config(
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+# ── Custom CSS ────────────────────────────────────────────────────────────────
+
+st.markdown(
+    """
+    <style>
+    .metric-card {
+        background: #1e1e2e;
+        border-radius: 8px;
+        padding: 16px;
+        border-left: 4px solid;
+    }
+    .stExpander > div:first-child {
+        font-size: 1.05rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -66,13 +87,15 @@ def get_kg() -> KnowledgeGraph:
 
 with st.sidebar:
     st.markdown("## 📡 SignalNoise AI")
+    st.caption("v1.0.0 · github.com/Jagadeesh0463")
     st.markdown("---")
-    st.markdown("### Navigation")
+
     page = st.radio(
-        "Go to",
-        ["📤 Upload Documents", "📡 Signal Dashboard", "📋 Audit Log"],
+        "Navigation",
+        ["📤 Upload Documents", "📡 Signal Dashboard", "📊 Analytics", "📋 Audit Log"],
         label_visibility="collapsed",
     )
+
     st.markdown("---")
 
     store = get_store()
@@ -84,38 +107,61 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     col1.metric("🔴 Strong", len(strong))
     col2.metric("🟡 Weak", len(weak))
+
+    docs_uploaded = len(st.session_state.anon_docs)
+    if docs_uploaded > 0:
+        st.metric("📄 Documents", docs_uploaded)
+
     st.markdown("---")
-    st.caption("SignalNoise AI · Sprint 1 · FLM Learning")
+
+    # Quick reset option
+    if st.button("🗑️ Reset Data", help="Clear ChromaDB and SQLite — use before a fresh demo run"):
+        import shutil
+        chroma_path = config.CHROMA_DB_PATH
+        db_path = config.SQLITE_DB_PATH
+        if chroma_path.exists():
+            shutil.rmtree(chroma_path)
+        if db_path.exists():
+            db_path.unlink()
+        st.session_state.anon_docs = []
+        st.session_state.store = MemoryStore()
+        st.session_state.pipeline_ran = False
+        st.success("✅ Data reset complete.")
+        st.rerun()
 
 
-# ── Helper functions (must be defined before page routing) ───────────────────
+# ── Helper: render signal card ────────────────────────────────────────────────
 
 def _render_signal_card(sig: dict, store: MemoryStore) -> None:
-    """Render a single signal card with evidence and feedback buttons."""
-    severity_color = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
+    """Render a single signal card with evidence, narration, and feedback buttons."""
+    severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
     trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
-    confidence_label = {"high": "High confidence", "medium": "Medium confidence", "low": "Low confidence"}.get(
-        sig["confidence_band"], ""
-    )
+    confidence_label = {
+        "high": "High confidence",
+        "medium": "Medium confidence",
+        "low": "Low confidence",
+    }.get(sig["confidence_band"], "")
 
     with st.expander(
-        f"{severity_color} **{sig['title']}** · {trend_icon} {sig['trend'].title()} · {confidence_label}",
-        expanded=sig["severity"] == "STRONG",
+        f"{severity_icon} **{sig['title']}**  ·  {trend_icon} {sig['trend'].title()}  ·  {confidence_label}",
+        expanded=(sig["severity"] == "STRONG"),
     ):
-        col1, col2 = st.columns([3, 1])
+        col_detail, col_action = st.columns([3, 1])
 
-        with col1:
-            st.markdown(f"**Category:** {sig['category'].replace('_', ' ').title()}")
+        with col_detail:
+            cat_display = sig["category"].replace("_", " ").title()
+            st.markdown(f"**Category:** {cat_display}")
             st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
             st.markdown(f"**Detected:** {sig['created_at'][:10]}")
 
+            # Evidence snippets from store
             evidence = store.get_evidence_for_signal(sig["id"])
             if evidence:
                 st.markdown("**Evidence:**")
                 for ev in evidence[:3]:
                     st.markdown(f"> _{ev['snippet']}_")
 
-        with col2:
+        with col_action:
             st.markdown("**Your feedback:**")
             reviewer_role = st.selectbox(
                 "Your role",
@@ -133,6 +179,7 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
 
 def _save_feedback(signal_id: str, reviewer_role: str, decision: str, store: MemoryStore) -> None:
     import datetime as dt
+
     fb = Feedback(
         id=str(uuid.uuid4()),
         signal_id=signal_id,
@@ -141,7 +188,8 @@ def _save_feedback(signal_id: str, reviewer_role: str, decision: str, store: Mem
         created_at=dt.datetime.utcnow(),
     )
     store.save_feedback(fb)
-    st.toast(f"{'✅ Confirmed' if decision == 'confirmed' else '❌ Dismissed'}", icon="📋")
+    icon = "✅" if decision == "confirmed" else "❌"
+    st.toast(f"{icon} {decision.title()}", icon="📋")
 
 
 # ── Page: Upload Documents ────────────────────────────────────────────────────
@@ -150,14 +198,16 @@ if page == "📤 Upload Documents":
     st.title("📤 Upload Documents")
     st.markdown(
         "Upload meeting notes, incident logs, status reports, or ticket exports. "
-        "Supported formats: **.txt · .docx · .pdf**"
+        "Supported: **.txt · .docx · .pdf**"
     )
 
-    source_type = st.selectbox(
-        "Document type",
-        ["meeting_note", "incident_log", "status_report", "ticket"],
-        format_func=lambda x: x.replace("_", " ").title(),
-    )
+    col_type, col_spacer = st.columns([2, 3])
+    with col_type:
+        source_type = st.selectbox(
+            "Document type",
+            ["meeting_note", "incident_log", "status_report", "ticket"],
+            format_func=lambda x: x.replace("_", " ").title(),
+        )
 
     uploaded_files = st.file_uploader(
         "Choose files",
@@ -179,32 +229,26 @@ if page == "📤 Upload Documents":
             for i, uploaded_file in enumerate(uploaded_files):
                 progress.progress(
                     (i + 1) / len(uploaded_files),
-                    text=f"Processing {uploaded_file.name}...",
+                    text=f"Processing {uploaded_file.name}…",
                 )
 
-                # Save uploaded file to data/raw/ temporarily
                 raw_path = config.RAW_DATA_DIR / f"{uuid.uuid4()}_{uploaded_file.name}"
                 raw_path.write_bytes(uploaded_file.read())
 
                 try:
-                    # Step 1 — Load and quality check
                     doc = load_file(raw_path, source_type=source_type)
                     store.save_document(doc)
 
-                    # Step 2 — Anonymize
                     anon_doc = anonymize(doc)
                     anon_docs.append(anon_doc)
 
-                    # Step 3 — Add to knowledge graph
                     kg.add_document(anon_doc)
-
                     store.mark_document_processed(doc.id)
 
                 except Exception as e:
                     failed.append((uploaded_file.name, str(e)))
 
                 finally:
-                    # Delete raw file from disk (privacy compliance)
                     if raw_path.exists():
                         raw_path.unlink()
 
@@ -218,7 +262,6 @@ if page == "📤 Upload Documents":
                 for name, reason in failed:
                     st.error(f"❌ **{name}** — {reason}")
 
-            # Run signal detection if we have enough documents
             total_docs = len(st.session_state.anon_docs)
             if total_docs >= config.MIN_DOCS_FOR_BERTOPIC:
                 st.info(
@@ -229,7 +272,7 @@ if page == "📤 Upload Documents":
                 needed = config.MIN_DOCS_FOR_BERTOPIC - total_docs
                 st.warning(
                     f"⚠️ {total_docs}/{config.MIN_DOCS_FOR_BERTOPIC} documents uploaded. "
-                    f"Upload {needed} more to enable signal detection."
+                    f"Need {needed} more to enable signal detection."
                 )
 
 
@@ -242,117 +285,207 @@ elif page == "📡 Signal Dashboard":
     anon_docs = st.session_state.anon_docs
     total_docs = len(anon_docs)
 
-    # ── Run pipeline button
-    col_btn, col_info = st.columns([2, 3])
+    # ── Filter bar ──────────────────────────────────────────────────────────────
+    col_filter1, col_filter2, col_btn, col_export = st.columns([2, 2, 1, 1])
+
+    with col_filter1:
+        category_filter = st.selectbox(
+            "Category",
+            ["All", "Delivery Risk", "Team Health", "Operational", "Dependency"],
+            label_visibility="visible",
+        )
+
+    with col_filter2:
+        severity_filter = st.selectbox(
+            "Severity",
+            ["All", "Strong", "Weak"],
+            label_visibility="visible",
+        )
+
     with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
         run_disabled = total_docs < config.MIN_DOCS_FOR_BERTOPIC
-        if st.button(
+        detect_clicked = st.button(
             "🔍 Detect Signals",
             type="primary",
             disabled=run_disabled,
             help=f"Requires {config.MIN_DOCS_FOR_BERTOPIC} documents minimum.",
-        ):
-            _do_rerun = False   # set True on success — rerun happens OUTSIDE try/except
+            use_container_width=True,
+        )
 
-            with st.spinner("Running signal detection pipeline..."):
-                try:
-                    # Import here to avoid slow load on every page
-                    from src.signals.embedder import embed_documents, get_all_embeddings
-                    from src.signals.detector import detect_signals
+    # ── Run pipeline ────────────────────────────────────────────────────────────
+    if detect_clicked:
+        _do_rerun = False
 
-                    # Embed all anonymized documents
-                    embed_documents(anon_docs)
+        with st.spinner("Running signal detection pipeline…"):
+            try:
+                from src.signals.detector import detect_signals
+                from src.signals.embedder import embed_documents, get_all_embeddings
 
-                    # Get embeddings from ChromaDB
-                    documents, embeddings, metadatas = get_all_embeddings()
+                embed_documents(anon_docs)
+                documents, embeddings, metadatas = get_all_embeddings()
 
-                    if not documents or len(documents) == 0:
-                        st.error("No embeddings found. Please upload documents first.")
+                if not documents or len(documents) == 0:
+                    st.error("No embeddings found. Please upload documents first.")
+                else:
+                    signals = detect_signals(documents, embeddings, metadatas)
+                    actionable_signals = [s for s in signals if s.is_actionable()]
+
+                    if not actionable_signals:
+                        for signal in signals:
+                            store.save_signal(signal)
+                        st.session_state.pipeline_ran = True
+                        st.warning(
+                            "⚠️ All signals were classified as NOISE. "
+                            "Upload more varied documents to detect patterns."
+                        )
+                        _do_rerun = True
                     else:
-                        # Detect signals
-                        signals = detect_signals(documents, embeddings, metadatas)
+                        validation_results = validate_signals(actionable_signals, anon_docs)
+                        risks = build_risks(validation_results)
+                        signal_titles = {s.id: s.title for s in signals}
+                        narrate_risks(risks, signal_titles=signal_titles)
 
-                        # Split actionable vs noise
-                        actionable_signals = [s for s in signals if s.is_actionable()]
+                        for signal in signals:
+                            store.save_signal(signal)
 
-                        if not actionable_signals:
-                            # All signals are NOISE — save and show warning
-                            for signal in signals:
-                                store.save_signal(signal)
-                            st.session_state.pipeline_ran = True
-                            st.warning(
-                                "⚠️ All signals were classified as NOISE. "
-                                "Upload more varied documents to detect patterns."
-                            )
-                            _do_rerun = True
-                        else:
-                            # Validate evidence
-                            validation_results = validate_signals(
-                                actionable_signals,
-                                anon_docs,
-                            )
+                        kg = get_kg()
+                        for vr in validation_results:
+                            if vr.passed and anon_docs:
+                                kg.add_signal(vr.signal, anon_docs[0])
 
-                            # Build risks
-                            risks = build_risks(validation_results)
+                        st.session_state.pipeline_ran = True
+                        actionable_count = sum(1 for s in signals if s.is_actionable())
+                        st.success(f"✅ Detection complete — {actionable_count} actionable signals found.")
+                        _do_rerun = True
 
-                            # Narrate
-                            signal_titles = {s.id: s.title for s in signals}
-                            narrate_risks(risks, signal_titles=signal_titles)
+            except Exception as e:
+                st.error(f"Pipeline error: {e}")
 
-                            # Save to store
-                            for signal in signals:
-                                store.save_signal(signal)
+        if _do_rerun:
+            st.rerun()
 
-                            # Update knowledge graph with signals
-                            kg = get_kg()
-                            for vr in validation_results:
-                                if vr.passed and anon_docs:
-                                    kg.add_signal(vr.signal, anon_docs[0])
-
-                            st.session_state.pipeline_ran = True
-                            st.success(
-                                f"✅ Detection complete — "
-                                f"{sum(1 for s in signals if s.is_actionable())} actionable signals found."
-                            )
-                            _do_rerun = True
-
-                except Exception as e:
-                    st.error(f"Pipeline error: {e}")
-
-            # Rerun OUTSIDE try/except so RerunException propagates cleanly
-            if _do_rerun:
-                st.rerun()
-
-    with col_info:
-        if run_disabled:
-            st.warning(
-                f"⚠️ Need {config.MIN_DOCS_FOR_BERTOPIC - total_docs} more documents "
-                f"(currently {total_docs}/{config.MIN_DOCS_FOR_BERTOPIC})."
-            )
+    if run_disabled:
+        st.warning(
+            f"⚠️ Need {config.MIN_DOCS_FOR_BERTOPIC - total_docs} more documents "
+            f"(currently {total_docs}/{config.MIN_DOCS_FOR_BERTOPIC})."
+        )
 
     st.markdown("---")
 
-    # ── Signal cards
+    # ── Signal cards ────────────────────────────────────────────────────────────
     active_signals = store.get_active_signals()
     actionable = [s for s in active_signals if s["severity"] in ("STRONG", "WEAK")]
 
+    # Apply filters
+    if category_filter != "All":
+        cat_key = category_filter.lower().replace(" ", "_")
+        actionable = [s for s in actionable if s["category"] == cat_key]
+
+    if severity_filter != "All":
+        actionable = [s for s in actionable if s["severity"] == severity_filter.upper()]
+
+    # Export button
+    with col_export:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if actionable:
+            df_export = pd.DataFrame(
+                [
+                    {
+                        "Title": s["title"],
+                        "Category": s["category"],
+                        "Severity": s["severity"],
+                        "Confidence": s["confidence_band"],
+                        "Trend": s["trend"],
+                        "Owner": s["suggested_owner_role"],
+                        "Detected": s["created_at"][:10],
+                        "Status": s["status"],
+                    }
+                    for s in actionable
+                ]
+            )
+            csv_bytes = df_export.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Export CSV",
+                data=csv_bytes,
+                file_name="signalnoise_signals.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
     if not actionable:
-        st.info(
-            "No active signals yet. Upload documents and click **Detect Signals**."
-        )
+        st.info("No active signals yet. Upload documents and click **Detect Signals**.")
     else:
         strong_signals = [s for s in actionable if s["severity"] == "STRONG"]
         weak_signals = [s for s in actionable if s["severity"] == "WEAK"]
 
         if strong_signals:
-            st.markdown("### 🔴 Strong Signals")
+            st.markdown(f"### 🔴 Strong Signals ({len(strong_signals)})")
             for sig in strong_signals:
                 _render_signal_card(sig, store)
 
         if weak_signals:
-            st.markdown("### 🟡 Weak Signals")
+            st.markdown(f"### 🟡 Weak Signals ({len(weak_signals)})")
             for sig in weak_signals:
                 _render_signal_card(sig, store)
+
+
+# ── Page: Analytics ───────────────────────────────────────────────────────────
+
+elif page == "📊 Analytics":
+    st.title("📊 Analytics")
+
+    store = get_store()
+    all_signals = store.get_active_signals()
+
+    if not all_signals:
+        st.info("No signals detected yet. Upload documents and run detection first.")
+    else:
+        df = pd.DataFrame(all_signals)
+
+        # ── Summary metrics ──────────────────────────────────────────────────────
+        col1, col2, col3, col4 = st.columns(4)
+        total = len(df)
+        strong = len(df[df["severity"] == "STRONG"])
+        weak = len(df[df["severity"] == "WEAK"])
+        confirmed = len(df[df["status"] == "confirmed"])
+
+        col1.metric("Total Signals", total)
+        col2.metric("🔴 Strong", strong)
+        col3.metric("🟡 Weak", weak)
+        col4.metric("✅ Confirmed", confirmed)
+
+        st.markdown("---")
+
+        # ── Charts ───────────────────────────────────────────────────────────────
+        chart_col1, chart_col2 = st.columns(2)
+
+        with chart_col1:
+            st.markdown("#### Signals by Category")
+            if "category" in df.columns:
+                cat_counts = df["category"].value_counts().reset_index()
+                cat_counts.columns = ["Category", "Count"]
+                cat_counts["Category"] = cat_counts["Category"].str.replace("_", " ").str.title()
+                st.bar_chart(cat_counts.set_index("Category"))
+
+        with chart_col2:
+            st.markdown("#### Signals by Severity")
+            if "severity" in df.columns:
+                sev_counts = df["severity"].value_counts().reset_index()
+                sev_counts.columns = ["Severity", "Count"]
+                st.bar_chart(sev_counts.set_index("Severity"))
+
+        st.markdown("---")
+
+        # ── Signal table ─────────────────────────────────────────────────────────
+        st.markdown("#### All Signals")
+        display_cols = ["title", "category", "severity", "confidence_band", "trend", "status", "created_at"]
+        available_cols = [c for c in display_cols if c in df.columns]
+        display_df = df[available_cols].copy()
+        display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
+        if "Created At" in display_df.columns:
+            display_df["Created At"] = display_df["Created At"].str[:10]
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
 # ── Page: Audit Log ───────────────────────────────────────────────────────────
@@ -367,8 +500,19 @@ elif page == "📋 Audit Log":
     if not logs:
         st.info("No audit entries yet.")
     else:
-        import pandas as pd
-        df = pd.DataFrame(logs)[["created_at", "action", "entity_type", "entity_id"]]
-        df.columns = ["Timestamp", "Action", "Entity Type", "Entity ID"]
-        df["Entity ID"] = df["Entity ID"].str[:8] + "..."
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        df = pd.DataFrame(logs)
+        if all(c in df.columns for c in ["created_at", "action", "entity_type", "entity_id"]):
+            display_df = df[["created_at", "action", "entity_type", "entity_id"]].copy()
+            display_df.columns = ["Timestamp", "Action", "Entity Type", "Entity ID"]
+            display_df["Entity ID"] = display_df["Entity ID"].str[:8] + "…"
+            display_df["Timestamp"] = display_df["Timestamp"].str[:19]
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # Export audit log
+            csv_bytes = display_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Export Audit Log",
+                data=csv_bytes,
+                file_name="signalnoise_audit_log.csv",
+                mime="text/csv",
+            )

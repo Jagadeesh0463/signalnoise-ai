@@ -1,8 +1,8 @@
 """
 src/memory/store.py
 
-Organisational Memory Store — all SQLite read/write operations.
-Initialises the database schema on first run automatically.
+Organizational Memory Store — all SQLite read/write operations.
+Initializes the database schema on first run automatically.
 
 Pipeline position:
     Detector → Store (save signals)
