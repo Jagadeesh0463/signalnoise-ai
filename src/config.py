@@ -22,8 +22,19 @@ from dotenv import load_dotenv
 
 from src.exceptions import ConfigurationError
 
-# Load .env file into environment at import time
+# Load .env file into environment (local dev only — no-op on Streamlit Cloud)
 load_dotenv()
+
+# ── Streamlit Cloud secrets → environment variables ───────────────────────────
+# On Streamlit Cloud, secrets are in st.secrets instead of .env.
+# We copy them into os.environ so the rest of config.py works unchanged.
+try:
+    import streamlit as st
+    for _key, _val in st.secrets.items():
+        if isinstance(_val, str):
+            os.environ.setdefault(_key, _val)
+except Exception:
+    pass  # Not running under Streamlit, or secrets not configured yet
 
 
 # ── Logging setup (runs once when this module is first imported) ──────────────
@@ -129,7 +140,7 @@ def _load_config() -> Config:
         MIN_TOPIC_SIZE=_optional_int("MIN_TOPIC_SIZE", 2),
 
         # Privacy
-        SPACY_MODEL=_optional("SPACY_MODEL", "en_core_web_lg"),
+        SPACY_MODEL=_optional("SPACY_MODEL", "en_core_web_sm"),
         MIN_GROUP_SIZE=_optional_int("MIN_GROUP_SIZE", 5),
 
         # Logging
