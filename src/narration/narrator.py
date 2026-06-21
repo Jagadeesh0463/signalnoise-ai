@@ -52,9 +52,20 @@ def _get_client() -> Groq:
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(risk: Risk, signal_title: str) -> str:
+_CATEGORY_FOCUS: dict[str, str] = {
+    "dependency":     "Focus on: which APIs or vendors are blocked, how long they have been unresolved, and escalation urgency.",
+    "delivery_risk":  "Focus on: missed milestones, sprint velocity decline, carry-forward work, and timeline impact.",
+    "operational":    "Focus on: incidents, outages, deployment failures, and reliability risk.",
+    "team_health":    "Focus on: overtime patterns, morale signals, workload allocation, and burnout indicators.",
+    "attrition":      "Focus on: retention risk, resignation signals, staffing impact on delivery, and urgency of action.",
+    "bus_factor":     "Focus on: which roles hold critical knowledge, single-point-of-failure risk, and documentation gaps.",
+    "technical_debt": "Focus on: test coverage gaps, bugs escaping to production, QA capacity, and quality degradation trend.",
+}
+
+
+def _build_prompt(risk: Risk, signal_title: str, category: str = "") -> str:
     """
-    Build a structured prompt for Groq.
+    Build a category-specific prompt for Groq.
 
     All values come from the Risk object — no raw document text is included.
     The prompt is a template; user-controlled content is never interpolated
@@ -63,23 +74,28 @@ def _build_prompt(risk: Risk, signal_title: str) -> str:
     Args:
         risk:         Structured Risk object.
         signal_title: Title of the parent Signal.
+        category:     Signal category for focus instructions.
 
     Returns:
         Complete prompt string for the Groq chat completion.
     """
+    focus_hint = _CATEGORY_FOCUS.get(category, "Focus on the business impact and urgency of action.")
+
     return (
         "You are a program risk analyst writing a concise executive summary.\n\n"
         "Write exactly 2 sentences for a Program Manager reading a risk dashboard.\n\n"
         "Rules:\n"
         "- First sentence: describe the specific risk and its organizational impact.\n"
-        "- Second sentence: state the recommended action or urgency.\n"
-        "- Reference specific patterns from the evidence (e.g. 'three consecutive sprints', "
-        "'multiple team members', 'unresolved for five weeks').\n"
+        "- Second sentence: state the recommended action with urgency.\n"
+        f"- {focus_hint}\n"
+        "- Reference specific patterns where possible (e.g. 'three consecutive sprints', "
+        "'unresolved for five weeks', 'two team members at risk').\n"
         "- Use plain business language. No jargon, no AI/ML references.\n"
-        "- Do not invent facts. Only use what is provided.\n"
-        "- All role codes are anonymized — use them as-is.\n\n"
+        "- Do not invent facts not present in the data below.\n"
+        "- Role codes are anonymized — use them as-is.\n\n"
         "Risk data:\n"
         f"  Signal: {signal_title}\n"
+        f"  Category: {category or 'general'}\n"
         f"  Priority: {risk.priority}\n"
         f"  Owner: {risk.suggested_owner_role}\n"
         f"  Business impact: {risk.business_impact}\n"
@@ -111,7 +127,7 @@ def _fallback_narration(risk: Risk) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def narrate_risk(risk: Risk, signal_title: str = "Signal detected") -> Risk:
+def narrate_risk(risk: Risk, signal_title: str = "Signal detected", category: str = "") -> Risk:
     """
     Generate a plain-English executive narration for a Risk object.
 
@@ -130,7 +146,7 @@ def narrate_risk(risk: Risk, signal_title: str = "Signal detected") -> Risk:
         logger.info("Risk %s already has narration — skipping.", risk.id[:8])
         return risk
 
-    prompt = _build_prompt(risk, signal_title)
+    prompt = _build_prompt(risk, signal_title, category=category)
     last_error: Exception | None = None
 
     for attempt in range(1 + _MAX_RETRIES):
@@ -218,17 +234,18 @@ def narrate_risk(risk: Risk, signal_title: str = "Signal detected") -> Risk:
 def narrate_risks(
     risks: list[Risk],
     signal_titles: dict[str, str] | None = None,
+    signal_categories: dict[str, str] | None = None,
 ) -> list[Risk]:
     """
-    Narrate a list of Risk objects.
+    Narrate a list of Risk objects with category-specific prompts.
 
     Continues even if individual narrations fail — fallback is used per risk.
     Already-narrated risks are skipped.
 
     Args:
-        risks:         List of Risk objects from Risk Intelligence.
-        signal_titles: Optional dict mapping signal_id → signal title.
-                       A generic title is used if not provided.
+        risks:              List of Risk objects from Risk Intelligence.
+        signal_titles:      Optional dict mapping signal_id → signal title.
+        signal_categories:  Optional dict mapping signal_id → category string.
 
     Returns:
         The same list of Risk objects with narration populated on each.
@@ -238,10 +255,12 @@ def narrate_risks(
         return risks
 
     signal_titles = signal_titles or {}
+    signal_categories = signal_categories or {}
 
     for risk in risks:
         title = signal_titles.get(risk.signal_id, "Organizational risk signal detected")
-        narrate_risk(risk, signal_title=title)
+        category = signal_categories.get(risk.signal_id, "")
+        narrate_risk(risk, signal_title=title, category=category)
 
     narrated = sum(1 for r in risks if r.narration)
     logger.info(

@@ -65,11 +65,15 @@ class MemoryStore:
             # ── Column migrations (safe to run on every startup) ──────────────
             # ALTER TABLE IF NOT EXISTS is not supported in SQLite < 3.37,
             # so we catch the error if the column already exists.
-            try:
-                conn.execute("ALTER TABLE signals ADD COLUMN narration TEXT")
-                logger.info("Migration: added narration column to signals table.")
-            except Exception:
-                pass  # Column already exists — no action needed
+            for migration_sql, migration_name in [
+                ("ALTER TABLE signals ADD COLUMN narration TEXT", "narration"),
+                ("ALTER TABLE signals ADD COLUMN confidence_score INTEGER", "confidence_score"),
+            ]:
+                try:
+                    conn.execute(migration_sql)
+                    logger.info("Migration: added %s column to signals table.", migration_name)
+                except Exception:
+                    pass  # Column already exists — no action needed
 
         logger.info("MemoryStore initialized at: %s", self.db_path)
 
@@ -126,12 +130,18 @@ class MemoryStore:
 
     # ── Signals ───────────────────────────────────────────────────────────────
 
-    def save_signal(self, signal: Signal, narration: str | None = None) -> None:
+    def save_signal(
+        self,
+        signal: Signal,
+        narration: str | None = None,
+        confidence_score: int | None = None,
+    ) -> None:
         """Save a detected signal. Also writes a signal_history snapshot.
 
         Args:
-            signal:    The Signal object to persist.
-            narration: Optional Groq/LLM executive summary for this signal.
+            signal:           The Signal object to persist.
+            narration:        Optional Groq/LLM executive summary for this signal.
+            confidence_score: Optional computed confidence percentage (50–97).
         """
         try:
             with self._connect() as conn:
@@ -139,8 +149,9 @@ class MemoryStore:
                     """
                     INSERT OR REPLACE INTO signals
                         (id, title, category, severity, confidence_band, trend,
-                         suggested_owner_role, status, narration, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         suggested_owner_role, status, narration, confidence_score,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         signal.id,
@@ -152,6 +163,7 @@ class MemoryStore:
                         signal.suggested_owner_role,
                         signal.status,
                         narration,
+                        confidence_score,
                         signal.created_at.isoformat(),
                         signal.updated_at.isoformat(),
                     ),

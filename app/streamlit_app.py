@@ -132,49 +132,46 @@ with st.sidebar:
 
 # ── Helper: render signal card ────────────────────────────────────────────────
 
-def _confidence_display(band: str, evidence_count: int = 0) -> str:
-    """
-    Convert confidence band + evidence count to a specific percentage.
-
-    More evidence → higher confidence within each band.
-    """
-    if band == "high":
-        pct = min(97, 85 + evidence_count * 2)
-    elif band == "medium":
-        pct = min(84, 65 + evidence_count * 3)
-    else:
-        pct = min(64, 40 + evidence_count * 4)
-    return f"{pct}%"
+def _confidence_display(sig: dict) -> str:
+    """Return the computed confidence percentage, or estimate from band."""
+    score = sig.get("confidence_score")
+    if score:
+        return f"{score}%"
+    # Fallback for signals saved before confidence engine
+    band = sig.get("confidence_band", "low")
+    return {"high": "85%", "medium": "70%", "low": "55%"}.get(band, "55%")
 
 
 def _render_signal_card(sig: dict, store: MemoryStore) -> None:
-    """Render a single signal card with evidence, narration, and feedback buttons."""
+    """Render a full enterprise signal card with evidence, narration, and feedback."""
     severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
     trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
-
-    evidence = store.get_evidence_for_signal(sig["id"])
-    confidence_pct = _confidence_display(sig["confidence_band"], len(evidence))
+    confidence_pct = _confidence_display(sig)
 
     with st.expander(
-        f"{severity_icon} **{sig['title']}**  ·  {trend_icon} {sig['trend'].title()}  ·  {confidence_pct} confidence",
+        f"{severity_icon} **{sig['title']}**  ·  {confidence_pct} confidence  ·  {trend_icon} {sig['trend'].title()}",
         expanded=(sig["severity"] == "STRONG"),
     ):
         col_detail, col_action = st.columns([3, 1])
 
         with col_detail:
-            cat_display = sig["category"].replace("_", " ").title()
-            st.markdown(f"**Category:** {cat_display}")
-            st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
-            st.markdown(f"**Confidence:** {confidence_pct}")
-            st.markdown(f"**Detected:** {sig['created_at'][:10]}")
+            # ── Metadata row ──────────────────────────────────────────────────
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Category", sig["category"].replace("_", " ").title())
+            m2.metric("Severity", sig["severity"].title())
+            m3.metric("Confidence", confidence_pct)
+            m4.metric("Detected", sig["created_at"][:10])
 
-            # Executive summary from LLM narration
+            st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
+
+            # ── Executive Summary ─────────────────────────────────────────────
             narration = sig.get("narration")
             if narration:
-                st.markdown("**Executive Summary:**")
+                st.markdown("**Executive Summary**")
                 st.info(narration)
 
-            # Evidence section — doc count, mention count, snippets
+            # ── Evidence ──────────────────────────────────────────────────────
+            evidence = store.get_evidence_for_signal(sig["id"])
             if evidence:
                 doc_ids = {ev["document_id"] for ev in evidence}
                 st.markdown(
@@ -185,10 +182,44 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
                     if snippet:
                         st.markdown(f"> _{snippet}_")
             else:
-                st.caption("No evidence snippets stored for this signal.")
+                # Fallback: show signal's own embedded evidence snippets
+                fallback = [e for e in (sig.get("evidence") or []) if e]
+                if not fallback:
+                    # Try parsing from Signal object stored in DB
+                    pass
+                st.caption("📎 Evidence will appear after re-running detection.")
+
+            # ── Explainability ────────────────────────────────────────────────
+            with st.expander("🔍 Why was this signal detected?", expanded=False):
+                st.markdown(
+                    f"- **Signal category:** {sig['category'].replace('_', ' ').title()}\n"
+                    f"- **Severity rule:** {'4+ documents with 2+ risk keywords' if sig['severity'] == 'STRONG' else '2–3 documents with risk keywords'}\n"
+                    f"- **Confidence:** {confidence_pct} (based on document coverage, evidence quality, keyword density)\n"
+                    f"- **Trend:** {sig['trend'].title()} — first detected {sig['created_at'][:10]}"
+                )
 
         with col_action:
-            st.markdown("**Your feedback:**")
+            st.markdown("**Review this signal:**")
+
+            # ── Recommended Action ────────────────────────────────────────────
+            action_map = {
+                "critical": "🚨 Escalate today",
+                "high":     "⚠️ Act this week",
+                "medium":   "📋 Plan next sprint",
+                "low":      "📝 Log and monitor",
+            }
+            # Derive priority from severity/confidence
+            score = sig.get("confidence_score") or 70
+            if sig["severity"] == "STRONG" and score >= 85:
+                priority_hint = "critical"
+            elif sig["severity"] == "STRONG":
+                priority_hint = "high"
+            elif score >= 70:
+                priority_hint = "medium"
+            else:
+                priority_hint = "low"
+            st.info(action_map[priority_hint])
+
             reviewer_role = st.selectbox(
                 "Your role",
                 ["Program-Manager", "Engineering-Manager", "Platform-Lead",
@@ -347,6 +378,8 @@ elif page == "📡 Signal Dashboard":
 
         with st.spinner("Running signal detection pipeline…"):
             try:
+                from src.signals.aggregator import aggregate_signals
+                from src.signals.confidence import compute_confidence
                 from src.signals.detector import detect_signals
                 from src.signals.embedder import embed_documents, get_all_embeddings
 
@@ -356,12 +389,12 @@ elif page == "📡 Signal Dashboard":
                 if not documents or len(documents) == 0:
                     st.error("No embeddings found. Please upload documents first.")
                 else:
-                    signals = detect_signals(documents, embeddings, metadatas)
-                    actionable_signals = [s for s in signals if s.is_actionable()]
+                    raw_signals = detect_signals(documents, embeddings, metadatas)
 
-                    if not actionable_signals:
-                        for signal in signals:
-                            store.save_signal(signal)
+                    # Aggregate: merge semantically equivalent signals by category
+                    signals = aggregate_signals(raw_signals)
+
+                    if not signals:
                         st.session_state.pipeline_ran = True
                         st.warning(
                             "⚠️ All signals were classified as NOISE. "
@@ -369,24 +402,63 @@ elif page == "📡 Signal Dashboard":
                         )
                         _do_rerun = True
                     else:
-                        validation_results = validate_signals(actionable_signals, anon_docs)
-                        risks = build_risks(validation_results)
-                        signal_titles = {s.id: s.title for s in signals}
-                        narrate_risks(risks, signal_titles=signal_titles)
+                        # Validate evidence for every actionable signal
+                        validation_results = validate_signals(signals, anon_docs)
 
-                        # Build narration lookup: signal_id → narration text
+                        # ── Save evidence to SQLite (THE critical fix) ──────────
+                        for vr in validation_results:
+                            if vr.passed:
+                                for ev in vr.evidence_list:
+                                    try:
+                                        store.save_evidence(ev)
+                                    except Exception:
+                                        pass  # already exists — upsert handles it
+
+                        # Build evidence lookup for confidence engine
+                        evidence_by_signal: dict[str, list] = {
+                            vr.signal.id: vr.evidence_list
+                            for vr in validation_results if vr.passed
+                        }
+
+                        # Build risks from validated signals
+                        risks = build_risks(validation_results)
+
+                        # Compute confidence scores and store in session
+                        confidence_map: dict[str, int] = {}
+                        for sig in signals:
+                            ev_list = evidence_by_signal.get(sig.id, [])
+                            score, _ = compute_confidence(sig, ev_list, total_docs=total_docs)
+                            confidence_map[sig.id] = score
+
+                        # Narrate with category-specific prompts
+                        signal_titles = {s.id: s.title for s in signals}
+                        signal_categories = {s.id: s.category for s in signals}
+                        narrate_risks(
+                            risks,
+                            signal_titles=signal_titles,
+                            signal_categories=signal_categories,
+                        )
+
+                        # Build narration lookup
                         narration_map = {r.signal_id: r.narration for r in risks if r.narration}
 
+                        # Save signals with narration and computed confidence %
                         for signal in signals:
-                            store.save_signal(signal, narration=narration_map.get(signal.id))
+                            store.save_signal(
+                                signal,
+                                narration=narration_map.get(signal.id),
+                                confidence_score=confidence_map.get(signal.id),
+                            )
 
+                        # Update knowledge graph
                         kg = get_kg()
                         for vr in validation_results:
                             if vr.passed and anon_docs:
                                 kg.add_signal(vr.signal, anon_docs[0])
 
                         st.session_state.pipeline_ran = True
-                        actionable_count = sum(1 for s in signals if s.is_actionable())
+                        st.session_state.confidence_map = confidence_map
+                        actionable_count = len(signals)
                         st.success(f"✅ Detection complete — {actionable_count} actionable signals found.")
                         _do_rerun = True
 
@@ -474,48 +546,91 @@ elif page == "📊 Analytics":
     else:
         df = pd.DataFrame(all_signals)
 
-        # ── Summary metrics ──────────────────────────────────────────────────────
-        col1, col2, col3, col4 = st.columns(4)
+        # ── Programme Health Score ────────────────────────────────────────────────
         total = len(df)
         strong = len(df[df["severity"] == "STRONG"])
         weak = len(df[df["severity"] == "WEAK"])
         confirmed = len(df[df["status"] == "confirmed"])
+        dismissed = len(df[df["status"] == "dismissed"])
+        avg_confidence = (
+            int(df["confidence_score"].dropna().mean())
+            if "confidence_score" in df.columns and df["confidence_score"].notna().any()
+            else None
+        )
+        # Score: 100 − (strong*15 + weak*5), min 0
+        health_score = max(0, 100 - strong * 15 - weak * 5)
+        health_label = (
+            "🟢 Healthy" if health_score >= 80
+            else "🟡 At Risk" if health_score >= 50
+            else "🔴 Critical"
+        )
 
-        col1.metric("Total Signals", total)
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Programme Health", f"{health_score}/100", health_label)
         col2.metric("🔴 Strong", strong)
         col3.metric("🟡 Weak", weak)
         col4.metric("✅ Confirmed", confirmed)
+        col5.metric("Avg Confidence", f"{avg_confidence}%" if avg_confidence else "—")
 
         st.markdown("---")
 
-        # ── Charts ───────────────────────────────────────────────────────────────
+        # ── Charts row 1 ─────────────────────────────────────────────────────────
         chart_col1, chart_col2 = st.columns(2)
 
         with chart_col1:
             st.markdown("#### Signals by Category")
-            if "category" in df.columns:
-                cat_counts = df["category"].value_counts().reset_index()
-                cat_counts.columns = ["Category", "Count"]
-                cat_counts["Category"] = cat_counts["Category"].str.replace("_", " ").str.title()
-                st.bar_chart(cat_counts.set_index("Category"))
+            cat_counts = df["category"].value_counts().reset_index()
+            cat_counts.columns = ["Category", "Count"]
+            cat_counts["Category"] = cat_counts["Category"].str.replace("_", " ").str.title()
+            st.bar_chart(cat_counts.set_index("Category"))
 
         with chart_col2:
-            st.markdown("#### Signals by Severity")
-            if "severity" in df.columns:
+            st.markdown("#### Confidence Distribution")
+            if "confidence_score" in df.columns and df["confidence_score"].notna().any():
+                conf_df = df[["title", "confidence_score"]].dropna().copy()
+                conf_df["title"] = conf_df["title"].str[:30]
+                conf_df = conf_df.sort_values("confidence_score", ascending=False)
+                st.bar_chart(conf_df.set_index("title")["confidence_score"])
+            else:
                 sev_counts = df["severity"].value_counts().reset_index()
                 sev_counts.columns = ["Severity", "Count"]
                 st.bar_chart(sev_counts.set_index("Severity"))
+
+        # ── Charts row 2 ─────────────────────────────────────────────────────────
+        chart_col3, chart_col4 = st.columns(2)
+
+        with chart_col3:
+            st.markdown("#### Top Risk Owners")
+            owner_counts = df["suggested_owner_role"].value_counts().reset_index()
+            owner_counts.columns = ["Owner", "Signals"]
+            st.bar_chart(owner_counts.set_index("Owner"))
+
+        with chart_col4:
+            st.markdown("#### Signal Status Breakdown")
+            status_counts = df["status"].value_counts().reset_index()
+            status_counts.columns = ["Status", "Count"]
+            st.bar_chart(status_counts.set_index("Status"))
 
         st.markdown("---")
 
         # ── Signal table ─────────────────────────────────────────────────────────
         st.markdown("#### All Signals")
-        display_cols = ["title", "category", "severity", "confidence_band", "trend", "status", "created_at"]
+        display_cols = ["title", "category", "severity", "confidence_score",
+                        "trend", "suggested_owner_role", "status", "created_at"]
         available_cols = [c for c in display_cols if c in df.columns]
         display_df = df[available_cols].copy()
-        display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
-        if "Created At" in display_df.columns:
-            display_df["Created At"] = display_df["Created At"].str[:10]
+        col_labels = {
+            "title": "Signal", "category": "Category", "severity": "Severity",
+            "confidence_score": "Confidence %", "trend": "Trend",
+            "suggested_owner_role": "Owner", "status": "Status", "created_at": "Detected",
+        }
+        display_df.rename(columns=col_labels, inplace=True)
+        if "Detected" in display_df.columns:
+            display_df["Detected"] = display_df["Detected"].str[:10]
+        if "Confidence %" in display_df.columns:
+            display_df["Confidence %"] = display_df["Confidence %"].apply(
+                lambda x: f"{int(x)}%" if pd.notna(x) else "—"
+            )
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
@@ -533,13 +648,20 @@ elif page == "📋 Audit Log":
     else:
         df = pd.DataFrame(logs)
         if all(c in df.columns for c in ["created_at", "action", "entity_type", "entity_id"]):
-            display_df = df[["created_at", "action", "entity_type", "entity_id"]].copy()
-            display_df.columns = ["Timestamp", "Action", "Entity Type", "Entity ID"]
+            display_df = df[["created_at", "action", "entity_type", "entity_id", "detail"]].copy()
+            display_df.columns = ["Timestamp", "Action", "Entity Type", "Entity ID", "Detail"]
             display_df["Entity ID"] = display_df["Entity ID"].str[:8] + "…"
             display_df["Timestamp"] = display_df["Timestamp"].str[:19]
+            display_df["Detail"] = display_df["Detail"].fillna("—")
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-            # Export audit log
+            # Summary counts
+            action_counts = df["action"].value_counts()
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("Documents Uploaded", int(action_counts.get("document_uploaded", 0)))
+            col_b.metric("Signals Detected", int(action_counts.get("signal_detected", 0)))
+            col_c.metric("Feedback Given", int(action_counts.get("feedback_given", 0)))
+
             csv_bytes = display_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "⬇️ Export Audit Log",
