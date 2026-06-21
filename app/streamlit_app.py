@@ -132,15 +132,20 @@ with st.sidebar:
 
 # ── Helper: render signal card ────────────────────────────────────────────────
 
+def _confidence_display(band: str) -> str:
+    """Convert confidence band to a human-readable percentage range."""
+    return {
+        "high":   "High (85–95%)",
+        "medium": "Medium (65–84%)",
+        "low":    "Low (40–64%)",
+    }.get(band, band)
+
+
 def _render_signal_card(sig: dict, store: MemoryStore) -> None:
     """Render a single signal card with evidence, narration, and feedback buttons."""
     severity_icon = {"STRONG": "🔴", "WEAK": "🟡", "NOISE": "⚪"}.get(sig["severity"], "⚪")
     trend_icon = {"emerging": "📈", "stable": "➡️", "fading": "📉"}.get(sig["trend"], "➡️")
-    confidence_label = {
-        "high": "High confidence",
-        "medium": "Medium confidence",
-        "low": "Low confidence",
-    }.get(sig["confidence_band"], "")
+    confidence_label = _confidence_display(sig["confidence_band"])
 
     with st.expander(
         f"{severity_icon} **{sig['title']}**  ·  {trend_icon} {sig['trend'].title()}  ·  {confidence_label}",
@@ -152,20 +157,28 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
             cat_display = sig["category"].replace("_", " ").title()
             st.markdown(f"**Category:** {cat_display}")
             st.markdown(f"**Suggested owner:** `{sig['suggested_owner_role']}`")
+            st.markdown(f"**Confidence:** {confidence_label}")
             st.markdown(f"**Detected:** {sig['created_at'][:10]}")
 
-            # Evidence snippets from store
+            # Executive summary from LLM narration
+            narration = sig.get("narration")
+            if narration:
+                st.markdown("**Executive Summary:**")
+                st.info(narration)
+
+            # Evidence snippets
             evidence = store.get_evidence_for_signal(sig["id"])
             if evidence:
                 st.markdown("**Evidence:**")
-                for ev in evidence[:3]:
+                for ev in evidence[:4]:
                     st.markdown(f"> _{ev['snippet']}_")
 
         with col_action:
             st.markdown("**Your feedback:**")
             reviewer_role = st.selectbox(
                 "Your role",
-                ["Programme-Manager", "Director", "SRE-Lead"],
+                ["Program-Manager", "Engineering-Manager", "Platform-Lead",
+                 "SRE-Lead", "Director"],
                 key=f"role_{sig['id']}",
                 label_visibility="collapsed",
             )
@@ -346,8 +359,11 @@ elif page == "📡 Signal Dashboard":
                         signal_titles = {s.id: s.title for s in signals}
                         narrate_risks(risks, signal_titles=signal_titles)
 
+                        # Build narration lookup: signal_id → narration text
+                        narration_map = {r.signal_id: r.narration for r in risks if r.narration}
+
                         for signal in signals:
-                            store.save_signal(signal)
+                            store.save_signal(signal, narration=narration_map.get(signal.id))
 
                         kg = get_kg()
                         for vr in validation_results:

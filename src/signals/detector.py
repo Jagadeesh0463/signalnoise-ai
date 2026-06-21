@@ -261,6 +261,72 @@ def _infer_category(top_words: list[str]) -> str:
     return "delivery_risk"   # default — most common in MVP context
 
 
+def _make_title(category: str, top_words: list[str]) -> str:
+    """
+    Generate a human-readable signal title from category and BERTopic keywords.
+
+    Avoids raw keyword dumps like "Signal: data, team, pipeline".
+    Instead produces phrases like "Deployment Pipeline Instability" that
+    a Program Manager can understand without ML knowledge.
+
+    Args:
+        category:  Inferred category (delivery_risk, team_health, etc.)
+        top_words: BERTopic's top keywords for the topic.
+
+    Returns:
+        A readable title string.
+    """
+    words = {w.lower() for w in top_words}
+
+    # ── Delivery risk titles ──────────────────────────────────────────────────
+    if category == "delivery_risk":
+        if words & {"sprint", "velocity", "missed", "slipped"}:
+            return "Repeated Sprint Velocity Decline"
+        if words & {"milestone", "deadline", "deadline", "pushed", "deferred"}:
+            return "Delivery Milestone at Risk"
+        if words & {"pipeline", "deployment", "release", "deploy"}:
+            return "Deployment Pipeline Instability"
+        if words & {"auth", "api", "service", "integration"}:
+            return "API Integration Delivery Risk"
+        return "Delivery Risk Detected"
+
+    # ── Team health titles ────────────────────────────────────────────────────
+    if category == "team_health":
+        if words & {"burnout", "overtime", "weekend", "exhausted"}:
+            return "Team Burnout Risk"
+        if words & {"leaving", "attrition", "resigned", "quit"}:
+            return "Attrition and Retention Risk"
+        if words & {"morale", "frustrated", "disengaged", "unhappy"}:
+            return "Low Team Morale"
+        if words & {"capacity", "understaffed", "overloaded", "bandwidth"}:
+            return "Team Capacity Overload"
+        return "Team Health Concern"
+
+    # ── Operational titles ────────────────────────────────────────────────────
+    if category == "operational":
+        if words & {"incident", "outage", "crash", "down"}:
+            return "Production Incident or Outage"
+        if words & {"pipeline", "data", "sync", "job"}:
+            return "Data Pipeline Failure"
+        if words & {"bug", "bugs", "production", "hotfix"}:
+            return "Production Bugs Slipping Through QA"
+        if words & {"alert", "monitor", "metric", "threshold"}:
+            return "Operational Alert Threshold Breached"
+        return "Operational Risk Detected"
+
+    # ── Dependency titles ─────────────────────────────────────────────────────
+    if category == "dependency":
+        if words & {"auth", "api", "authentication", "login"}:
+            return "Auth API Dependency Blocker"
+        if words & {"vendor", "external", "third", "supplier"}:
+            return "External Vendor Dependency Blocked"
+        if words & {"blocked", "blocking", "waiting", "unresolved"}:
+            return "Critical Dependency Unresolved"
+        return "Dependency Blocker Identified"
+
+    return "Organizational Risk Signal"
+
+
 def _build_signal(
     topic_id: int,
     doc_group: list[dict],
@@ -285,11 +351,8 @@ def _build_signal(
     confidence_band = _classify_confidence(severity, doc_count)
     category = _infer_category(top_words)
 
-    # Title: use top 3 keywords or a fallback
-    if top_words:
-        title = f"Signal: {', '.join(top_words[:3])}"
-    else:
-        title = "Unclustered signal — requires manual review"
+    # Title: human-readable phrase from category + keywords
+    title = _make_title(category, top_words)
 
     # Evidence: take the highest-probability snippets (first 150 chars each)
     sorted_docs = sorted(doc_group, key=lambda d: d["prob"], reverse=True)
@@ -301,12 +364,12 @@ def _build_signal(
         for d in doc_group
     ]
 
-    # Infer suggested owner from category
+    # Suggested owner by category — diversified per reviewer feedback
     owner_map = {
-        "delivery_risk": "Programme-Manager",
-        "team_health":   "Delivery-Director",
+        "delivery_risk": "Program-Manager",
+        "team_health":   "Engineering-Manager",
         "operational":   "SRE-Lead",
-        "dependency":    "Programme-Manager",
+        "dependency":    "Platform-Lead",
     }
 
     return Signal(
@@ -318,7 +381,7 @@ def _build_signal(
         trend="emerging",           # default; updated by memory store over time
         evidence=evidence,
         source_document_ids=source_doc_ids,
-        suggested_owner_role=owner_map.get(category, "Programme-Manager"),
+        suggested_owner_role=owner_map.get(category, "Program-Manager"),
         related_teams=[],           # populated by knowledge graph in Sprint 2
         related_projects=[],        # populated by knowledge graph in Sprint 2
         status="active",

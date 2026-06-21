@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS signals (
     trend                TEXT NOT NULL,   -- emerging | stable | fading
     suggested_owner_role TEXT,
     status               TEXT DEFAULT 'active',  -- active | confirmed | dismissed
+    narration            TEXT,                   -- Groq/LLM executive summary (2 sentences)
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL
 );

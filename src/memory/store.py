@@ -118,16 +118,21 @@ class MemoryStore:
 
     # ── Signals ───────────────────────────────────────────────────────────────
 
-    def save_signal(self, signal: Signal) -> None:
-        """Save a detected signal. Also writes a signal_history snapshot."""
+    def save_signal(self, signal: Signal, narration: str | None = None) -> None:
+        """Save a detected signal. Also writes a signal_history snapshot.
+
+        Args:
+            signal:    The Signal object to persist.
+            narration: Optional Groq/LLM executive summary for this signal.
+        """
         try:
             with self._connect() as conn:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO signals
                         (id, title, category, severity, confidence_band, trend,
-                         suggested_owner_role, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         suggested_owner_role, status, narration, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         signal.id,
@@ -138,6 +143,7 @@ class MemoryStore:
                         signal.trend,
                         signal.suggested_owner_role,
                         signal.status,
+                        narration,
                         signal.created_at.isoformat(),
                         signal.updated_at.isoformat(),
                     ),
