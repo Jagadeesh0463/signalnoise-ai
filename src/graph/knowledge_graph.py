@@ -65,7 +65,7 @@ class KnowledgeGraph:
 
     def __init__(self) -> None:
         self.graph = nx.DiGraph()
-        logger.info("KnowledgeGraph initialised — empty graph.")
+        logger.info("KnowledgeGraph initialized — empty graph.")
 
     # ── Building the graph ────────────────────────────────────────────────────
 

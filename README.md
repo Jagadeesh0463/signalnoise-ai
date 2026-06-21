@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/Jagadeesh0463/signalnoise-ai/actions/workflows/codeql.yml/badge.svg)](https://github.com/Jagadeesh0463/signalnoise-ai/actions/workflows/codeql.yml)
 [![Code Style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
 
 **AI-powered platform for detecting early operational risks from organizational documents using NLP, BERTopic, and LLMs.**
 

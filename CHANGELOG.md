@@ -10,11 +10,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Evidence snippets displayed on signal cards
-- Signal trend tracking (emerging → stable → fading)
-- Full NetworkX knowledge graph queries
 - Weekly digest email
 - Jira / Confluence connector
+- FastAPI REST layer (v2.0)
+- Multi-language document support
+- Ollama on-premise integration
+
+---
+
+## [1.2.0] — 2026-06-21
+
+### Added
+- **Enterprise signal cards** — Risk IDs (RISK-001…N), business impact bullets ("Why should leadership care?"), severity reasoning checklist, confidence breakdown (docs matched / passages / cross-team corroboration), smart evidence-driven urgency labels
+- **Risk relationships** — each card shows cause-effect links to other detected risk categories (e.g. "Delivery Risk is driven by Dependency, Team Burnout")
+- **Evidence source traceability** — each evidence snippet labeled with its source document filename
+- **Ranked programme summary** — top risks ordered by document coverage (e.g. "1. 🔴 Delivery Risk (8/10 docs), 2. 🔴 Team Burnout (7/10)")
+- **Evidence quality filtering** — removes short (<30 char) snippets, snippets >40% anonymization codes, and near-duplicates before display
+- `store.get_document_map()` — returns `{document_id: filename}` for traceability lookups
+- `VERSION` file — single source of truth for version string
+
+### Fixed
+- British spelling `initialised` → `initialized` in `knowledge_graph.py`
+
+---
+
+## [1.1.0] — 2026-06-21
+
+### Added
+- **Hybrid signal detector** — sentence-level contextual pattern scanner (primary) + BERTopic (gap-fill only); guarantees all 7 risk categories detected regardless of corpus size
+- **7 canonical risk categories** — `team_health`, `delivery_risk`, `attrition`, `bus_factor`, `dependency`, `technical_debt`, `operational` — each with distinct title, owner role, and detection patterns
+- **Evidence saved on every signal card** — contextual evidence snippets persisted to SQLite immediately; validator evidence saved as secondary pass
+- **Signal aggregator** — merges duplicate signals within the same category into a single canonical signal (strongest evidence wins)
+- **Confidence engine** — dynamic score from document coverage, evidence count, and severity; replaces static band labels
+- **Programme summary banner** — document count, signal count, health label (Critical / At Risk / Healthy)
+- **Category-specific recommended actions** — per-card action list tailored to the risk category
+- **Affected functional areas** — derived per category (Engineering, SRE, HR, etc.)
+- **Matched indicator phrases** — "Why detected?" section shows actual keywords found in evidence
+- **Document count on card header** — "Detected in 7/10 docs" displayed inline
+
+### Fixed
+- **Evidence FK constraint bug** — evidence was inserted before the parent signal existed in SQLite; `FOREIGN KEY (signal_id) REFERENCES signals(id)` with `PRAGMA foreign_keys=ON` silently blocked all inserts; fixed by reordering pipeline to save signals first, evidence second
+- BERTopic producing only 1 noise topic with 10 short documents — demoted to gap-fill role
+- Evidence display showing "No evidence snippets available" despite detection succeeding
 
 ---
 
@@ -70,5 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/Jagadeesh0463/signalnoise-ai/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Jagadeesh0463/signalnoise-ai/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Jagadeesh0463/signalnoise-ai/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/Jagadeesh0463/signalnoise-ai/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Jagadeesh0463/signalnoise-ai/releases/tag/v1.0.0
