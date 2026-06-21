@@ -62,8 +62,16 @@ class MemoryStore:
         with self._connect() as conn:
             schema_sql = SCHEMA_PATH.read_text()
             conn.executescript(schema_sql)
+            # ── Column migrations (safe to run on every startup) ──────────────
+            # ALTER TABLE IF NOT EXISTS is not supported in SQLite < 3.37,
+            # so we catch the error if the column already exists.
+            try:
+                conn.execute("ALTER TABLE signals ADD COLUMN narration TEXT")
+                logger.info("Migration: added narration column to signals table.")
+            except Exception:
+                pass  # Column already exists — no action needed
 
-        logger.info("MemoryStore initialised at: %s", self.db_path)
+        logger.info("MemoryStore initialized at: %s", self.db_path)
 
     def _connect(self) -> sqlite3.Connection:
         """Open a SQLite connection with foreign key enforcement enabled."""

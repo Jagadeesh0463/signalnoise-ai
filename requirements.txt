@@ -1,6 +1,13 @@
 # SignalNoise AI — Dependencies
 # Install: pip install -r requirements.txt
 
+# ── PyTorch CPU-only (must come first) ───────────────────────────────────────
+# Forces CPU-only PyTorch (~200MB) instead of CUDA version (~1.5GB).
+# Critical for Streamlit Cloud free tier — prevents build timeout.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu
+
 # ── Core NLP / Signal Detection ──────────────────────────────────────────────
 bertopic>=0.16.4
 sentence-transformers>=3.0.1        # MiniLM embeddings
@@ -18,7 +25,7 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 # ── Vector Store / Memory ─────────────────────────────────────────────────────
 chromadb>=0.5.3
 
-# ── LLM (Groq — portfolio demo only) ─────────────────────────────────────────
+# ── LLM (Groq) ────────────────────────────────────────────────────────────────
 groq>=0.9.0
 
 # ── UI ────────────────────────────────────────────────────────────────────────
