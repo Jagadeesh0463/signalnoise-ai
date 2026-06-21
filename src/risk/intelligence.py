@@ -58,10 +58,28 @@ IMPACT_TEMPLATES: dict[str, dict[str, str]] = {
         "low":      "Minor delivery friction detected — log and review next sprint.",
     },
     "team_health": {
-        "critical": "Team capacity critically low — risk of attrition or burnout imminent.",
+        "critical": "Team capacity critically low — risk of burnout and attrition is imminent.",
         "high":     "Team health signals deteriorating — people risk requires director attention.",
         "medium":   "Team health showing stress signals — proactive support recommended.",
         "low":      "Early team health signal — check in with team lead this week.",
+    },
+    "attrition": {
+        "critical": "Multiple team members showing attrition signals — immediate retention action required.",
+        "high":     "Attrition risk detected across the team — HR and management review needed this week.",
+        "medium":   "Early attrition signals observed — manager 1:1s and retention check recommended.",
+        "low":      "Low-level attrition signal — monitor and include in next people review.",
+    },
+    "bus_factor": {
+        "critical": "Critical knowledge concentrated in one person — programme is at single-point-of-failure risk.",
+        "high":     "Knowledge silos detected — loss of a key individual would severely impact delivery.",
+        "medium":   "Knowledge concentration risk emerging — documentation and knowledge sharing needed.",
+        "low":      "Early knowledge silo signal — encourage documentation in next sprint.",
+    },
+    "technical_debt": {
+        "critical": "Engineering quality critically degraded — test coverage gaps and bugs threaten the release.",
+        "high":     "Technical debt accumulation is impacting delivery speed and software quality.",
+        "medium":   "Engineering quality signals present — test coverage and QA process review recommended.",
+        "low":      "Low-level quality signal — add to technical backlog for next planning cycle.",
     },
     "operational": {
         "critical": "Operational stability at risk — potential incident in progress or imminent.",
@@ -93,6 +111,24 @@ ACTION_TEMPLATES: dict[str, dict[str, str]] = {
         "medium":   "Team lead to run a brief pulse check with the team. Report findings to programme manager.",
         "low":      "Monitor team communications over the next sprint for escalation.",
     },
+    "attrition": {
+        "critical": "HR Business Partner and Engineering Manager to hold immediate retention conversations. Escalate to Director if two or more members are at risk.",
+        "high":     "Engineering Manager to run 1:1 retention check-ins this week. Identify root causes and relief options.",
+        "medium":   "Manager to check in with flagged team members. Review workload and growth opportunities.",
+        "low":      "Include attrition signal in next people review. Monitor for escalation.",
+    },
+    "bus_factor": {
+        "critical": "Immediately identify critical knowledge held by one person. Initiate knowledge transfer sessions and document runbooks this sprint.",
+        "high":     "Engineering Manager to assign documentation pairing. Schedule knowledge transfer before next sprint.",
+        "medium":   "Team lead to run a knowledge mapping session. Identify undocumented systems or processes.",
+        "low":      "Add knowledge sharing to sprint goals. Encourage peer documentation review.",
+    },
+    "technical_debt": {
+        "critical": "Engineering Lead to halt new feature work until critical test coverage gaps are resolved. Run QA review immediately.",
+        "high":     "Schedule a dedicated tech debt sprint. Engineering Lead to define coverage targets and assign debt owners.",
+        "medium":   "Include tech debt items in next sprint planning. Engineering Lead to set minimum test coverage threshold.",
+        "low":      "Log tech debt signal. Add to backlog and review in next planning cycle.",
+    },
     "operational": {
         "critical": "SRE lead to initiate incident response protocol. Page on-call if not already active.",
         "high":     "SRE lead to review incident logs and ticket volume. Prepare runbook update.",
@@ -111,10 +147,13 @@ ACTION_TEMPLATES: dict[str, dict[str, str]] = {
 # ── Root cause templates ──────────────────────────────────────────────────────
 
 ROOT_CAUSE_TEMPLATES: dict[str, str] = {
-    "delivery_risk": "Likely causes: resource constraint, scope creep, unresolved technical blocker, or dependency on another team.",
-    "team_health":   "Likely causes: sustained overload, unclear priorities, lack of support, or team structure misalignment.",
-    "operational":   "Likely causes: increased system load, unresolved technical debt, insufficient monitoring, or deployment instability.",
-    "dependency":    "Likely causes: external vendor delay, cross-team coordination gap, or missing ownership of the dependency.",
+    "delivery_risk":  "Likely causes: resource constraint, scope creep, unresolved technical blocker, or dependency on another team.",
+    "team_health":    "Likely causes: sustained overload, unclear priorities, lack of support, or team structure misalignment.",
+    "attrition":      "Likely causes: sustained overwork, lack of career growth, team conflict, compensation concerns, or unclear expectations.",
+    "bus_factor":     "Likely causes: insufficient documentation, lack of pair programming, knowledge hoarding, or rapid team scaling without onboarding.",
+    "technical_debt": "Likely causes: delivery pressure squeezing QA, lack of test coverage standards, accumulated deferred refactoring, or insufficient code review.",
+    "operational":    "Likely causes: increased system load, unresolved technical debt, insufficient monitoring, or deployment instability.",
+    "dependency":     "Likely causes: external vendor delay, cross-team coordination gap, or missing ownership of the dependency.",
 }
 
 
