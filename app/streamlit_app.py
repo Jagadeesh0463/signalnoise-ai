@@ -27,7 +27,7 @@ from src.evidence.validator import validate_signals
 from src.graph.knowledge_graph import KnowledgeGraph
 from src.ingestion.loader import load_file
 from src.memory.store import MemoryStore
-from src.models import Feedback, Signal
+from src.models import Evidence, Feedback, Signal
 from src.narration.narrator import narrate_risks
 from src.privacy.anonymizer import anonymize
 from src.risk.intelligence import build_risks
@@ -176,27 +176,31 @@ def _render_signal_card(sig: dict, store: MemoryStore) -> None:
             if evidence:
                 doc_ids = {ev["document_id"] for ev in evidence}
                 st.markdown(
-                    f"**Evidence** — {len(doc_ids)} document(s) · {len(evidence)} mention(s)"
+                    f"**Evidence** — {len(doc_ids)} contributing document(s) · {len(evidence)} matching passage(s)"
                 )
                 for ev in evidence[:5]:
                     snippet = ev["snippet"].strip()
                     if snippet:
                         st.markdown(f"> _{snippet}_")
             else:
-                # Fallback: show signal's own embedded evidence snippets
-                fallback = [e for e in (sig.get("evidence") or []) if e]
-                if not fallback:
-                    # Try parsing from Signal object stored in DB
-                    pass
-                st.caption("📎 Evidence will appear after re-running detection.")
+                st.caption("No evidence snippets available for this signal.")
 
             # ── Explainability ────────────────────────────────────────────────
             with st.expander("🔍 Why was this signal detected?", expanded=False):
+                doc_ids_for_sig = evidence and list({ev["document_id"] for ev in evidence})
+                doc_count_str = f"{len(doc_ids_for_sig)} documents" if doc_ids_for_sig else "multiple documents"
+                severity_rule = (
+                    f"Found in {doc_count_str} — meets the STRONG threshold (4+ documents)"
+                    if sig["severity"] == "STRONG"
+                    else f"Found in {doc_count_str} — meets the WEAK threshold (2–3 documents)"
+                )
                 st.markdown(
-                    f"- **Signal category:** {sig['category'].replace('_', ' ').title()}\n"
-                    f"- **Severity rule:** {'4+ documents with 2+ risk keywords' if sig['severity'] == 'STRONG' else '2–3 documents with risk keywords'}\n"
-                    f"- **Confidence:** {confidence_pct} (based on document coverage, evidence quality, keyword density)\n"
-                    f"- **Trend:** {sig['trend'].title()} — first detected {sig['created_at'][:10]}"
+                    f"- **Risk category:** {sig['category'].replace('_', ' ').title()}\n"
+                    f"- **Detection method:** Sentence-level contextual pattern matching across all uploaded documents\n"
+                    f"- **Corroboration:** {severity_rule}\n"
+                    f"- **Confidence:** {confidence_pct} (document coverage · evidence quality · pattern specificity)\n"
+                    f"- **Suggested owner:** {sig['suggested_owner_role']}\n"
+                    f"- **First detected:** {sig['created_at'][:10]}"
                 )
 
         with col_action:
@@ -403,10 +407,42 @@ elif page == "📡 Signal Dashboard":
                         )
                         _do_rerun = True
                     else:
+                        # ── Save embedded evidence from contextual scanner ───────
+                        # Every signal produced by the contextual engine already
+                        # carries matching sentences in signal.evidence. Persist
+                        # them to SQLite immediately so the UI never shows a
+                        # placeholder, even if the validator later finds more.
+                        for signal in signals:
+                            if not signal.evidence:
+                                continue
+                            for i, snippet in enumerate(signal.evidence):
+                                snippet = snippet.strip()
+                                if not snippet or len(snippet) < 20:
+                                    continue
+                                doc_id = (
+                                    signal.source_document_ids[
+                                        i % len(signal.source_document_ids)
+                                    ]
+                                    if signal.source_document_ids else "unknown"
+                                )
+                                try:
+                                    store.save_evidence(
+                                        Evidence(
+                                            id=str(uuid.uuid4()),
+                                            signal_id=signal.id,
+                                            document_id=doc_id,
+                                            snippet=snippet[:300],
+                                            relevance_score=0.75,
+                                            source_count=len(signal.source_document_ids),
+                                        )
+                                    )
+                                except Exception:
+                                    pass  # duplicate on re-run — safe to ignore
+
                         # Validate evidence for every actionable signal
                         validation_results = validate_signals(signals, anon_docs)
 
-                        # ── Save evidence to SQLite (THE critical fix) ──────────
+                        # ── Also save validator-found evidence ──────────────────
                         for vr in validation_results:
                             if vr.passed:
                                 for ev in vr.evidence_list:
