@@ -5,7 +5,7 @@
 bertopic>=0.16.4
 sentence-transformers>=3.0.1        # MiniLM embeddings
 umap-learn>=0.5.6
-hdbscan>=0.8.38
+hdbscan>=0.8.44
 scikit-learn>=1.5.1                 # CountVectorizer used by BERTopic detector
 
 # ── Privacy Layer ─────────────────────────────────────────────────────────────
